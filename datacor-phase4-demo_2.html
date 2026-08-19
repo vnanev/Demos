@@ -1,0 +1,1020 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Datacor Phase 4 — Sales Analytics Personas (Clickable Demo)</title>
+<style>
+/* ============================================================
+   DATACOR GDS TOKENS — snapshot v1.1.0, Light mode
+   Sourced from gds-quicksight-theme.json. Swap values here only.
+   ============================================================ */
+:root{
+  /* Surfaces & ink — direct GDS lookups */
+  --surface-base:#FFFFFF;        /* surface/base */
+  --surface-sunken:#F5F5F5;      /* surface/sunken */
+  --text-primary:#212121;        /* text/primary */
+  --text-secondary:#424242;      /* text/secondary */
+  --accent:#1976D2;              /* surface/colored/primary/main */
+  --accent-fg:#FFFFFF;           /* text/onColor/onPrimary */
+  --measure:#1976D2;             /* primary/main */
+  --dimension:#009688;           /* secondary/main */
+
+  /* Feedback — RESERVED for status only, never a series */
+  --st-success:#4CAF50;          /* feedback/success/main */
+  --st-warning:#FF9800;          /* feedback/warning/main */
+  --st-error:#F44336;            /* feedback/error/main */
+  --on-warning:#212121;          /* text/onColor/onWarning */
+
+  /* Categorical series — CAPPED AT 2. Validated all-pairs on #FFFFFF:
+     CVD ΔE 16.1 (protan) · normal-vision ΔE 16.7 · both ≥3:1 contrast */
+  --series-1:#1976D2;            /* GDS blue 700  */
+  --series-2:#009688;            /* GDS teal 500  */
+
+  /* Ordinal / sequential — GDS blue primitives, re-stepped.
+     Validated: monotone L, all ΔL ≥0.06, light end 2.21:1, hue spread 15° */
+  --seq-1:#64B5F6; --seq-2:#2196F3; --seq-3:#1976D2; --seq-4:#0D47A1;
+
+  /* DERIVED — not in the GDS snapshot. Flagged for GDS team review. */
+  --ink-muted:#757575;
+  --grid:#E0E0E0;
+  --axis:#BDBDBD;
+  --border:rgba(33,33,33,.12);
+  --success-text:#2E7D32;
+  --error-text:#C62828;
+  --warn-text:#E65100;
+
+  --font:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --r:6px; --r-lg:10px;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{
+  font-family:var(--font); background:var(--surface-sunken);
+  color:var(--text-primary); font-size:14px; line-height:1.45;
+  -webkit-font-smoothing:antialiased;
+}
+/* ---------- Sample-data banner ---------- */
+.banner{
+  background:var(--st-warning); color:var(--on-warning);
+  padding:6px 16px; font-size:12px; font-weight:600; letter-spacing:.02em;
+  display:flex; gap:10px; align-items:center;
+}
+.banner svg{flex:0 0 auto}
+/* ---------- Header ---------- */
+header{background:var(--surface-base); border-bottom:1px solid var(--border)}
+.brandrow{display:flex; align-items:center; gap:14px; padding:10px 16px 8px}
+.logo{
+  width:26px;height:26px;border-radius:var(--r);background:var(--accent);
+  color:var(--accent-fg);display:grid;place-items:center;font-weight:700;font-size:13px
+}
+.brand{font-weight:700;font-size:15px;letter-spacing:-.01em}
+.brand span{font-weight:400;color:var(--ink-muted)}
+.spacer{flex:1}
+.asof{font-size:12px;color:var(--ink-muted);font-variant-numeric:tabular-nums}
+/* filter row — one row above the content, per interaction spec */
+.filters{display:flex;flex-wrap:wrap;gap:14px;align-items:flex-end;padding:0 16px 12px}
+.f{display:flex;flex-direction:column;gap:3px}
+.f label{font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-muted);font-weight:600}
+select,.seg{font-family:var(--font);font-size:13px}
+select{
+  padding:5px 8px;border:1px solid var(--border);border-radius:var(--r);
+  background:var(--surface-base);color:var(--text-primary);min-width:150px
+}
+.seg{display:flex;border:1px solid var(--border);border-radius:var(--r);overflow:hidden}
+.seg button{
+  border:0;background:var(--surface-base);color:var(--text-secondary);
+  padding:5px 11px;cursor:pointer;font-size:12.5px;font-weight:500;font-family:var(--font)
+}
+.seg button+button{border-left:1px solid var(--border)}
+.seg button[aria-pressed="true"]{background:var(--accent);color:var(--accent-fg);font-weight:600}
+.tgl{
+  display:flex;align-items:center;gap:7px;font-size:12.5px;color:var(--text-secondary);
+  cursor:pointer;padding:5px 10px;border:1px solid var(--border);border-radius:var(--r);
+  background:var(--surface-base);font-weight:500
+}
+.tgl input{margin:0;accent-color:var(--accent)}
+/* ---------- Shell ---------- */
+.shell{display:flex;min-height:calc(100vh - 108px);align-items:stretch}
+.rail{
+  width:236px;flex:0 0 236px;background:var(--surface-base);
+  border-right:1px solid var(--border);padding:14px 10px;
+}
+.railhead{
+  font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;
+  color:var(--ink-muted);font-weight:700;padding:0 8px 8px
+}
+.pbtn{
+  display:block;width:100%;text-align:left;border:0;background:transparent;
+  padding:9px 10px;border-radius:var(--r);cursor:pointer;font-family:var(--font);
+  color:var(--text-primary);margin-bottom:2px;border-left:3px solid transparent
+}
+.pbtn:hover{background:var(--surface-sunken)}
+.pbtn[aria-current="true"]{background:#E3F2FD;border-left-color:var(--accent)}
+.pbtn b{display:block;font-size:13.5px;font-weight:650}
+.pbtn i{display:block;font-style:normal;font-size:11.5px;color:var(--ink-muted);margin-top:1px}
+.scopechip{
+  display:inline-block;margin-top:5px;font-size:10px;font-weight:700;letter-spacing:.05em;
+  text-transform:uppercase;padding:2px 6px;border-radius:3px;
+  background:var(--surface-sunken);color:var(--text-secondary);border:1px solid var(--border)
+}
+.railnote{
+  margin:14px 8px 0;padding:10px;background:var(--surface-sunken);border-radius:var(--r);
+  font-size:11.5px;color:var(--text-secondary);border:1px solid var(--border)
+}
+main{flex:1;min-width:0;padding:14px 16px 40px}
+/* ---------- Subtabs ---------- */
+.subtabs{display:flex;gap:2px;border-bottom:1px solid var(--border);margin-bottom:14px}
+.subtabs button{
+  border:0;background:transparent;padding:8px 13px;cursor:pointer;font-family:var(--font);
+  font-size:13px;color:var(--text-secondary);border-bottom:2px solid transparent;font-weight:500
+}
+.subtabs button[aria-current="true"]{color:var(--accent);border-bottom-color:var(--accent);font-weight:650}
+.subtabs button:hover{color:var(--text-primary)}
+/* ---------- Cards ---------- */
+.grid{display:grid;gap:12px}
+.c{
+  background:var(--surface-base);border:1px solid var(--border);
+  border-radius:var(--r-lg);padding:13px 14px;position:relative;min-width:0
+}
+.c > h3{
+  margin:0 0 2px;font-size:12.5px;font-weight:650;color:var(--text-primary);
+  display:flex;align-items:center;gap:7px
+}
+.c > .sub{margin:0 0 10px;font-size:11px;color:var(--ink-muted)}
+.tile .val{
+  font-size:27px;font-weight:660;letter-spacing:-.02em;margin:2px 0 0;
+  color:var(--text-primary)
+}
+.tile .lbl{font-size:11.5px;color:var(--ink-muted);font-weight:500}
+.delta{font-size:12px;font-weight:650;display:inline-flex;align-items:center;gap:3px;margin-top:3px}
+.delta.up{color:var(--success-text)} .delta.dn{color:var(--error-text)}
+.delta.flat{color:var(--ink-muted)}
+/* status chip — always icon + label, never colour alone */
+.chip{
+  display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:650;
+  padding:2px 7px;border-radius:11px;border:1px solid;white-space:nowrap
+}
+.chip.ok{color:var(--success-text);border-color:var(--st-success);background:#E8F5E9}
+.chip.warn{color:var(--warn-text);border-color:var(--st-warning);background:#FFF3E0}
+.chip.err{color:var(--error-text);border-color:var(--st-error);background:#FFEBEE}
+.chip.neu{color:var(--text-secondary);border-color:var(--border);background:var(--surface-sunken)}
+/* ---------- Tables ---------- */
+table{width:100%;border-collapse:collapse;font-size:12.5px}
+th{
+  text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;
+  color:var(--ink-muted);font-weight:700;padding:5px 8px;border-bottom:1px solid var(--grid);
+  white-space:nowrap
+}
+th.n,td.n{text-align:right;font-variant-numeric:tabular-nums}
+td{padding:6px 8px;border-bottom:1px solid var(--grid);color:var(--text-primary)}
+tbody tr:last-child td{border-bottom:0}
+tr.clk{cursor:pointer}
+tr.clk:hover td{background:#E3F2FD}
+.mini{height:7px;background:var(--surface-sunken);border-radius:4px;overflow:hidden;min-width:56px}
+.mini i{display:block;height:100%;border-radius:4px;background:var(--series-1)}
+.tblwrap{overflow-x:auto}
+/* ---------- Legend ---------- */
+.legend{display:flex;gap:14px;flex-wrap:wrap;margin:0 0 8px;font-size:11.5px;color:var(--text-secondary)}
+.legend span{display:inline-flex;align-items:center;gap:5px}
+.sw{width:11px;height:11px;border-radius:3px;flex:0 0 auto}
+.swline{width:14px;height:2px;border-radius:2px}
+/* ---------- Evidence overlay ---------- */
+.ev{
+  position:absolute;top:9px;right:10px;font-size:9.5px;font-weight:700;letter-spacing:.04em;
+  text-transform:uppercase;padding:2px 6px;border-radius:3px;border:1px solid;display:none
+}
+body.showev .ev{display:block}
+.ev.net{color:#1B5E20;border-color:var(--st-success);background:#E8F5E9}
+.ev.bar{color:#0D47A1;border-color:var(--seq-2);background:#E3F2FD}
+.ev.inf{color:var(--text-secondary);border-color:var(--axis);background:var(--surface-sunken)}
+.ev.blk{color:var(--error-text);border-color:var(--st-error);background:#FFEBEE}
+/* ---------- Tooltip ---------- */
+#tip{
+  position:fixed;pointer-events:none;opacity:0;transition:opacity .08s;
+  background:var(--text-primary);color:#fff;padding:7px 9px;border-radius:var(--r);
+  font-size:11.5px;line-height:1.4;z-index:99;max-width:250px;
+  box-shadow:0 3px 10px rgba(0,0,0,.22)
+}
+#tip b{font-variant-numeric:tabular-nums}
+/* ---------- Misc ---------- */
+.note{
+  background:var(--surface-sunken);border:1px solid var(--border);border-radius:var(--r);
+  padding:9px 11px;font-size:11.5px;color:var(--text-secondary);margin-top:10px
+}
+.note b{color:var(--text-primary)}
+svg{display:block;overflow:visible}
+.tabtoggle{
+  border:1px solid var(--border);background:var(--surface-base);border-radius:var(--r);
+  font-size:11px;padding:2px 7px;cursor:pointer;color:var(--text-secondary);
+  font-family:var(--font);font-weight:600;margin-left:auto
+}
+.tabtoggle:hover{background:var(--surface-sunken)}
+.hidden{display:none}
+footer{padding:16px;font-size:11px;color:var(--ink-muted);text-align:center}
+</style>
+</head>
+<body>
+
+<div class="banner">
+  <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M8 1.5 15 14H1L8 1.5Zm0 4.2v4.1m0 1.9v.6" stroke="currentColor" stroke-width="1.3" fill="none" stroke-linecap="round"/></svg>
+  <span>ILLUSTRATIVE SAMPLE DATA — fictional tenant and customers. No figure here comes from Datacor, Barrington, or any real customer. Layout and metric definitions are the deliverable; the numbers are not.</span>
+</div>
+
+<header>
+  <div class="brandrow">
+    <div class="logo">D</div>
+    <div class="brand">Phase 4 — Sales Analytics <span>/ persona demo</span></div>
+    <div class="spacer"></div>
+    <div class="asof" id="asof"></div>
+  </div>
+  <div class="filters">
+    <div class="f"><label for="fCompany">Company</label>
+      <select id="fCompany"><option>Northvale Ingredients</option><option>Northvale Canada ULC</option></select></div>
+    <div class="f"><label for="fCurr">Currency</label>
+      <select id="fCurr"><option>USD</option><option>CAD</option></select></div>
+    <div class="f"><label for="fDate">Relative date (as-of)</label>
+      <select id="fDate">
+        <option value="today">Today</option><option value="yesterday">Yesterday</option>
+        <option value="lastworkday">Last workday</option><option value="lastmonth">Last month</option>
+        <option value="lastquarter">Last quarter</option><option value="lastyear">Last year</option>
+      </select></div>
+    <div class="f"><label for="fRep">Salesperson</label><select id="fRep"></select></div>
+    <div class="f"><label>SO type</label>
+      <div class="seg" id="fSO" role="group" aria-label="Sales order type">
+        <button data-so="all" aria-pressed="true">All</button>
+        <button data-so="order" aria-pressed="false">Order</button>
+        <button data-so="blanket" aria-pressed="false">Blanket</button>
+      </div></div>
+    <div class="spacer"></div>
+    <label class="tgl"><input type="checkbox" id="tEv"> Show data-source evidence</label>
+  </div>
+</header>
+
+<div class="shell">
+  <nav class="rail" id="rail">
+    <div class="railhead">Persona</div>
+  </nav>
+  <main>
+    <div class="subtabs" id="subtabs"></div>
+    <div id="view"></div>
+  </main>
+</div>
+
+<div id="tip" role="status" aria-live="polite"></div>
+<footer>Datacor GDS v1.1.0 (Light) · categorical series capped at 2 validated slots · palette checked with the colour validator, not by eye</footer>
+
+<script>
+"use strict";
+/* ==========================================================================
+   1. SAMPLE DATA — fictional. Magnitudes chosen to be plausible for a
+      ~$120M/yr specialty-ingredient distributor. Nothing here is real.
+   ========================================================================== */
+const REPS=[
+ {id:"r1",name:"A. Okonkwo",   team:"East",  quota:14000000, rev:11480000, kg:1620000, mgn:14.9, cov:2.6, qc:31, flag:4},
+ {id:"r2",name:"M. Delgado",   team:"East",  quota:12500000, rev:13100000, kg:1890000, mgn:16.2, cov:3.4, qc:38, flag:1},
+ {id:"r3",name:"S. Whitfield", team:"East",  quota:11000000, rev: 8420000, kg:1010000, mgn:12.1, cov:1.8, qc:22, flag:7},
+ {id:"r4",name:"J. Bergstrom", team:"West",  quota:13000000, rev:13650000, kg:2140000, mgn:15.4, cov:3.1, qc:35, flag:2},
+ {id:"r5",name:"P. Raghavan",  team:"West",  quota:10500000, rev: 9980000, kg:1330000, mgn:17.8, cov:2.9, qc:41, flag:3},
+ {id:"r6",name:"C. Lindqvist", team:"West",  quota: 9000000, rev: 6250000, kg: 720000, mgn:11.4, cov:1.4, qc:19, flag:9},
+ {id:"r7",name:"T. Abramson",  team:"Key",   quota:16000000, rev:15900000, kg:2480000, mgn:13.7, cov:2.8, qc:29, flag:2},
+ {id:"r8",name:"N. Farrukh",   team:"Key",   quota: 8500000, rev: 8790000, kg:1150000, mgn:18.6, cov:3.6, qc:44, flag:0}
+];
+const CUST=[
+ {id:"c1",n:"Ardent Nutrition",       ttm:14820000, kg:2140000, mgn:12.4, rep:"r7", tc:"National", loy:"Loyal",    last:6,  nextDue:-11, lim:2500000, ar:1980000, past:0,      dtp:38.1, dtpP:34.6, cls:9},
+ {id:"c2",n:"Belmont Health Sciences",ttm: 9640000, kg:1180000, mgn:15.8, rep:"r2", tc:"National", loy:"Loyal",    last:11, nextDue:2,   lim:1500000, ar:1210000, past:0,      dtp:31.4, dtpP:32.0, cls:7},
+ {id:"c3",n:"Cascadia Wellness",      ttm: 7110000, kg: 880000, mgn:11.2, rep:"r4", tc:"Regional", loy:"At risk",  last:74, nextDue:-46, lim:1200000, ar: 268000, past:191000, dtp:61.7, dtpP:44.2, cls:4},
+ {id:"c4",n:"Dunmore Pharma",         ttm: 6480000, kg: 410000, mgn:21.6, rep:"r8", tc:"National", loy:"Loyal",    last:4,  nextDue:8,   lim:1000000, ar: 742000, past:0,      dtp:27.9, dtpP:28.4, cls:6},
+ {id:"c5",n:"Everline Labs",          ttm: 5920000, kg: 690000, mgn:13.1, rep:"r1", tc:"Regional", loy:"Active",   last:19, nextDue:-3,  lim: 800000, ar: 863000, past: 94000, dtp:48.3, dtpP:39.1, cls:5},
+ {id:"c6",n:"Fairmount Botanicals",   ttm: 4760000, kg: 540000, mgn:16.9, rep:"r5", tc:"Regional", loy:"Active",   last:9,  nextDue:14,  lim: 750000, ar: 402000, past:0,      dtp:33.0, dtpP:33.8, cls:5},
+ {id:"c7",n:"Granby Supplements",     ttm: 4180000, kg: 620000, mgn: 9.8, rep:"r3", tc:"Regional", loy:"At risk",  last:58, nextDue:-30, lim: 600000, ar: 611000, past:148000, dtp:57.2, dtpP:41.5, cls:3},
+ {id:"c8",n:"Halstead Nutraceutical", ttm: 3940000, kg: 470000, mgn:14.3, rep:"r2", tc:"Regional", loy:"Active",   last:13, nextDue:5,   lim: 500000, ar: 288000, past:0,      dtp:35.6, dtpP:35.1, cls:4},
+ {id:"c9",n:"Ironwood Health",        ttm: 3210000, kg: 390000, mgn:17.4, rep:"r6", tc:"Local",    loy:"Active",   last:22, nextDue:-6,  lim: 400000, ar: 197000, past:  0,    dtp:29.8, dtpP:30.9, cls:3},
+ {id:"c10",n:"Juniper Life Sciences", ttm: 2870000, kg: 310000, mgn:19.2, rep:"r5", tc:"Local",    loy:"Loyal",    last:7,  nextDue:11,  lim: 350000, ar: 141000, past:0,      dtp:26.2, dtpP:27.7, cls:4},
+ {id:"c11",n:"Kestrel Formulations",  ttm: 2240000, kg: 280000, mgn:10.6, rep:"r6", tc:"Local",    loy:"At risk",  last:91, nextDue:-63, lim: 300000, ar:  62000, past: 62000, dtp:72.4, dtpP:50.3, cls:2},
+ {id:"c12",n:"Larkspur Nutrition",    ttm: 1980000, kg: 240000, mgn:15.1, rep:"r1", tc:"Local",    loy:"Active",   last:16, nextDue:4,   lim: 250000, ar: 118000, past:0,      dtp:32.8, dtpP:31.4, cls:3}
+];
+const CLASSES=[
+ ["Minerals",28400000],["Nutritional Supplements",21900000],["Excipients",12100000],
+ ["Carotenoids",8300000],["Vitamins",6900000],["Fibers",4400000],["Sweeteners",3800000],
+ ["Acidulants",2900000],["Flavors",2100000],["OTC Pharma",1700000],["Premixes",1400000],
+ ["Phosphates",1100000],["Aminos",800000],["Industrial",400000]
+];
+/* 24 months: margin % net of rebate, and realised price per kg */
+const MONTHS=(()=>{const a=[],base=13.4;for(let i=0;i<24;i++){
+  const m=base+Math.sin(i/2.6)*1.5+(i>16?-0.9:0)+((i%5)-2)*0.18;
+  const p=8.9+Math.cos(i/3.1)*0.5-(i*0.031);
+  a.push({i,label:mLabel(i),mgn:+m.toFixed(1),ppk:+p.toFixed(2)});}return a;})();
+function mLabel(i){const names=["Sep","Oct","Nov","Dec","Jan","Feb","Mar","Apr","May","Jun","Jul","Aug"];
+  return names[i%12]+" "+(24-i>12?"'24":"'25");}
+const STAGES=[["Qualified",14200000,31],["Sampling",9800000,44],["Trial order",6100000,58],["Contract",3400000,72],["Committed",2200000,19]];
+const SHIP7=[
+ ["Ardent Nutrition","SO104412","Magnesium Oxide HA Powder USP (1371)","08/21/26",31360],
+ ["Belmont Health Sciences","SO104455","Ascorbic Acid 97% Granular (1204)","08/21/26",14480],
+ ["Dunmore Pharma","SO104460","Microcrystalline Cellulose 101 (1399)","08/22/26",3750],
+ ["Everline Labs","SO104471","Citric Acid Anhydrous FG (1112)","08/24/26",22000],
+ ["Fairmount Botanicals","SO104488","Beta Carotene 22% LF Susp. (1036)","08/25/26",2000],
+ ["Ardent Nutrition","SO104502","Magnesium Citrate Anhydrous (1343)","08/25/26",11550]
+];
+/* Company plan & actuals. Open book splits into discrete vs blanket. */
+const CO={
+  planMTD:9_565_000, revMTD:7_056_000, revMTD_LY:7_527_000,
+  planYTD:75_565_000, revYTD:75_779_000, revYTD_LY:71_629_000,
+  /* Total open book is NOT what ships this month — Barrington shows these as
+     two separate figures ("Open Order" vs "Open This Mo."). Conflating them
+     makes projected close read several times over plan. */
+  openOrder:24_310_000, openBlanket:9_339_000, openThisMo:3_281_000, openThisMoBlanket:742_000,
+  openKg:4_338_000, openLines:743,
+  mgn:13.26, mgnLY:15.19, mgnTarget:15.0, ppk:8.34, ppkLY:8.71,
+  top10Share:71.4, newShare:6.2
+};
+/* As-of snapshot multipliers — demonstrates the Relative Date control */
+const ASOF={today:1,yesterday:.994,lastworkday:.981,lastmonth:.902,lastquarter:.727,lastyear:.318};
+const ASOF_LABEL={today:"Wed 19 Aug 2026",yesterday:"Tue 18 Aug 2026",lastworkday:"Mon 17 Aug 2026",
+  lastmonth:"Fri 31 Jul 2026",lastquarter:"Tue 30 Jun 2026",lastyear:"Mon 31 Dec 2025"};
+
+/* ==========================================================================
+   2. FORMATTERS
+   ========================================================================== */
+const nf=new Intl.NumberFormat("en-US");
+const money=v=>"$"+nf.format(Math.round(v));
+const mShort=v=>{const a=Math.abs(v);return (v<0?"-$":"$")+(a>=1e6?(a/1e6).toFixed(a>=1e7?1:2)+"M":a>=1e3?(a/1e3).toFixed(0)+"K":a.toFixed(0));};
+const kg=v=>nf.format(Math.round(v))+" kg";
+const kgS=v=>(v/1e6>=1?(v/1e6).toFixed(2)+"M":(v/1e3).toFixed(0)+"K")+" kg";
+const pct=(v,d=1)=>v.toFixed(d)+"%";
+const signPct=(v,d=1)=>(v>0?"+":"")+v.toFixed(d)+"%";
+
+/* ==========================================================================
+   3. STATE
+   ========================================================================== */
+const S={persona:"cso",tab:0,so:"all",asof:"today",rep:"all",cust:"c1"};
+const PERSONAS=[
+ {id:"cso",name:"Chief Sales Officer",scope:"Company",
+  desc:"Owns the company's entire commercial number.",
+  tabs:["Overview","Margin & price","Customers","Pipeline"]},
+ {id:"mgr",name:"Sales Manager",scope:"Team",
+  desc:"Owns a team of sellers in a territory.",
+  tabs:["Team","Action queue","Pipeline"]},
+ {id:"rep",name:"Sales Representative",scope:"Self",
+  desc:"Owns an assigned book and a personal quota.",
+  tabs:["My day","My numbers"]},
+ {id:"kam",name:"Key Account Manager",scope:"Assigned accounts",
+  desc:"Owns a few of the largest accounts.",
+  tabs:["Customer 360","Cadence","Credit & A/R"]}
+];
+const openTotal=()=>S.so==="all"?CO.openOrder:S.so==="blanket"?CO.openBlanket:CO.openOrder-CO.openBlanket;
+const openMonth=()=>S.so==="all"?CO.openThisMo:S.so==="blanket"?CO.openThisMoBlanket:CO.openThisMo-CO.openThisMoBlanket;
+const k=()=>ASOF[S.asof];
+
+/* ==========================================================================
+   4. SVG CHART PRIMITIVES
+   Rules applied: single axis, 2px lines, ≥8px markers, 4px rounded data-ends
+   anchored to baseline, 2px surface gap between adjacent/stacked fills,
+   recessive grid, direct labels, hover tooltip on every plotted form.
+   ========================================================================== */
+const SVGNS="http://www.w3.org/2000/svg";
+function el(t,a={}){const e=document.createElementNS(SVGNS,t);for(const k in a)e.setAttribute(k,a[k]);return e;}
+const tip=document.getElementById("tip");
+function bindTip(node,html){
+  node.addEventListener("mousemove",e=>{
+    tip.innerHTML=html; tip.style.opacity=1;
+    const w=tip.offsetWidth,h=tip.offsetHeight;
+    let x=e.clientX+13,y=e.clientY-h-9;
+    if(x+w>innerWidth-8)x=e.clientX-w-13; if(y<6)y=e.clientY+15;
+    tip.style.left=x+"px"; tip.style.top=y+"px";
+  });
+  node.addEventListener("mouseleave",()=>tip.style.opacity=0);
+}
+/* rounded rect, radius on one end only (data-end), baseline stays square */
+function barPath(x,y,w,h,r,dir){
+  r=Math.max(0,Math.min(r,dir==="h"?w:h));
+  if(dir==="h")return `M${x},${y} H${x+w-r} a${r},${r} 0 0 1 ${r},${r} V${y+h-r} a${r},${r} 0 0 1 ${-r},${r} H${x} Z`;
+  return `M${x},${y+r} a${r},${r} 0 0 1 ${r},${-r} H${x+w-r} a${r},${r} 0 0 1 ${r},${r} V${y+h} H${x} Z`;
+}
+/* --- Composition bar: actual + open, with plan target tick and LY caret --- */
+function planBar(opts){
+  const {actual,open,plan,ly,label,fmt=mShort}=opts;
+  const W=540,H=64,L=0,padR=70,axisY=40,barH=22;
+  const max=Math.max(actual+open,plan,ly)*1.06;
+  const sc=v=>(v/max)*(W-padR);
+  const s=el("svg",{viewBox:`0 0 ${W} ${H}`,width:"100%",height:H,role:"img","aria-label":label});
+  s.appendChild(el("line",{x1:0,y1:axisY,x2:W-padR,y2:axisY,stroke:"var(--axis)","stroke-width":1}));
+  const aw=sc(actual), ow=open>0?sc(open):0;
+  const g1=el("path",{d:barPath(L,axisY-barH,aw,barH,ow>2?0:4,"h"),fill:"var(--seq-3)"});
+  bindTip(g1,`<b>${fmt(actual)}</b> invoiced actual`); s.appendChild(g1);
+  if(ow>2){ /* 2px surface gap between adjacent fills */
+    const g2=el("path",{d:barPath(L+aw+2,axisY-barH,Math.max(ow-2,1),barH,4,"h"),fill:"var(--seq-1)"});
+    bindTip(g2,`<b>${fmt(open)}</b> open order book<br>projected close ${fmt(actual+open)}`);
+    s.appendChild(g2);
+  }
+  const px=sc(plan);
+  s.appendChild(el("line",{x1:px,y1:axisY-barH-7,x2:px,y2:axisY+5,stroke:"var(--text-primary)","stroke-width":2}));
+  const pl=el("text",{x:px,y:axisY-barH-11,"text-anchor":"middle","font-size":10,"font-weight":700,fill:"var(--text-primary)"});
+  pl.textContent="PLAN "+fmt(plan); s.appendChild(pl);
+  const lx=sc(ly);
+  const car=el("path",{d:`M${lx-5},${axisY+9} L${lx+5},${axisY+9} L${lx},${axisY+3} Z`,fill:"var(--ink-muted)"});
+  bindTip(car,`<b>${fmt(ly)}</b> same period last year`); s.appendChild(car);
+  const ll=el("text",{x:lx,y:axisY+21,"text-anchor":"middle","font-size":10,fill:"var(--ink-muted)"});
+  ll.textContent="LY"; s.appendChild(ll);
+  const tot=el("text",{x:W-padR+8,y:axisY-6,"font-size":13,"font-weight":700,fill:"var(--text-primary)"});
+  tot.textContent=fmt(actual+open); s.appendChild(tot);
+  const tl=el("text",{x:W-padR+8,y:axisY+8,"font-size":9.5,fill:"var(--ink-muted)"});
+  tl.textContent=open>0?"projected":"of plan "+pct(actual/plan*100,0); s.appendChild(tl);
+  return s;
+}
+/* --- Line chart, 1–2 series, crosshair + tooltip, direct end labels --- */
+function lineChart(series,opts={}){
+  const {H=170,fmt=v=>v.toFixed(1)+"%",target=null,targetLabel="target"}=opts;
+  const W=560,mL=8,mR=54,mT=14,mB=22;
+  const pts=series[0].data.length;
+  const all=series.flatMap(s=>s.data).concat(target!=null?[target]:[]);
+  let lo=Math.min(...all),hi=Math.max(...all); const pad=(hi-lo)*0.22||1; lo-=pad; hi+=pad;
+  const X=i=>mL+(i/(pts-1))*(W-mL-mR), Y=v=>mT+(1-(v-lo)/(hi-lo))*(H-mT-mB);
+  const s=el("svg",{viewBox:`0 0 ${W} ${H}`,width:"100%",height:H,role:"img",
+    "aria-label":series.map(x=>x.name).join(" and ")});
+  for(let g=0;g<4;g++){const y=mT+(g/3)*(H-mT-mB);
+    s.appendChild(el("line",{x1:mL,y1:y,x2:W-mR,y2:y,stroke:"var(--grid)","stroke-width":1}));}
+  if(target!=null){
+    s.appendChild(el("line",{x1:mL,y1:Y(target),x2:W-mR,y2:Y(target),stroke:"var(--text-primary)",
+      "stroke-width":1.5,"stroke-dasharray":"5 3"}));
+    const t=el("text",{x:W-mR+5,y:Y(target)+3.5,"font-size":10,"font-weight":650,fill:"var(--text-primary)"});
+    t.textContent=targetLabel; s.appendChild(t);
+  }
+  series.forEach((ser,si)=>{
+    const col=si===0?"var(--series-1)":"var(--series-2)";
+    const d=ser.data.map((v,i)=>(i?"L":"M")+X(i)+","+Y(v)).join(" ");
+    s.appendChild(el("path",{d,fill:"none",stroke:col,"stroke-width":2,"stroke-linejoin":"round","stroke-linecap":"round"}));
+    const li=ser.data.length-1;
+    s.appendChild(el("circle",{cx:X(li),cy:Y(ser.data[li]),r:4.5,fill:col,stroke:"var(--surface-base)","stroke-width":2}));
+    const lab=el("text",{x:X(li)+8,y:Y(ser.data[li])+3.5,"font-size":11,"font-weight":700,fill:"var(--text-primary)"});
+    lab.textContent=fmt(ser.data[li]); s.appendChild(lab);
+  });
+  [0,Math.floor(pts/2),pts-1].forEach(i=>{
+    const t=el("text",{x:X(i),y:H-5,"font-size":10,fill:"var(--ink-muted)",
+      "text-anchor":i===0?"start":i===pts-1?"end":"middle"});
+    t.textContent=series[0].labels[i]; s.appendChild(t);
+  });
+  const cross=el("line",{x1:0,y1:mT,x2:0,y2:H-mB,stroke:"var(--axis)","stroke-width":1,opacity:0});
+  s.appendChild(cross);
+  const hit=el("rect",{x:0,y:0,width:W,height:H,fill:"transparent"});
+  hit.addEventListener("mousemove",e=>{
+    const r=s.getBoundingClientRect(); const rel=(e.clientX-r.left)/r.width*W;
+    let i=Math.round(((rel-mL)/(W-mL-mR))*(pts-1)); i=Math.max(0,Math.min(pts-1,i));
+    cross.setAttribute("x1",X(i)); cross.setAttribute("x2",X(i)); cross.setAttribute("opacity",1);
+    tip.innerHTML=`<div style="color:#BDBDBD;margin-bottom:3px">${series[0].labels[i]}</div>`+
+      series.map((ser,si)=>`<div><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:${si===0?"#1976D2":"#009688"};margin-right:5px"></span>${ser.name} <b>${fmt(ser.data[i])}</b></div>`).join("");
+    tip.style.opacity=1;
+    const w=tip.offsetWidth,h=tip.offsetHeight; let x=e.clientX+13,y=e.clientY-h-9;
+    if(x+w>innerWidth-8)x=e.clientX-w-13; if(y<6)y=e.clientY+15;
+    tip.style.left=x+"px"; tip.style.top=y+"px";
+  });
+  hit.addEventListener("mouseleave",()=>{tip.style.opacity=0;cross.setAttribute("opacity",0);});
+  s.appendChild(hit);
+  return s;
+}
+/* --- Ranked horizontal bars, single hue (magnitude), direct labels --- */
+function rankedBar(rows,opts={}){
+  const {fmt=mShort,labelW=142,rowH=20,max:mx=null,color="var(--seq-3)"}=opts;
+  const W=560,padR=64; const max=mx||Math.max(...rows.map(r=>r[1]))*1.02;
+  const H=rows.length*rowH+4;
+  const s=el("svg",{viewBox:`0 0 ${W} ${H}`,width:"100%",height:H,role:"img","aria-label":"ranked values"});
+  rows.forEach((r,i)=>{
+    const y=i*rowH+2, bh=rowH-6; /* 2px+ surface gap between adjacent bars */
+    const t=el("text",{x:labelW-8,y:y+bh-3,"text-anchor":"end","font-size":11,fill:"var(--text-secondary)"});
+    t.textContent=r[0]; s.appendChild(t);
+    const w=Math.max((r[1]/max)*(W-labelW-padR),1);
+    const p=el("path",{d:barPath(labelW,y,w,bh,4,"h"),fill:r[3]||color});
+    bindTip(p,`<b>${r[0]}</b><br>${fmt(r[1])}${r[2]?"<br>"+r[2]:""}`); s.appendChild(p);
+    const v=el("text",{x:labelW+w+7,y:y+bh-3,"font-size":11,"font-weight":650,fill:"var(--text-primary)"});
+    v.textContent=fmt(r[1]); s.appendChild(v);
+  });
+  return s;
+}
+/* --- Attainment dot strip with 100% reference --- */
+function dotStrip(reps){
+  const W=560,H=118,mL=8,mR=8,mT=32,base=84;
+  const vals=reps.map(r=>r.rev/r.quota*100);
+  const lo=Math.min(70,...vals)-6, hi=Math.max(130,...vals)+6;
+  const X=v=>mL+((v-lo)/(hi-lo))*(W-mL-mR);
+  const s=el("svg",{viewBox:`0 0 ${W} ${H}`,width:"100%",height:H,role:"img","aria-label":"rep attainment distribution"});
+  s.appendChild(el("line",{x1:mL,y1:base,x2:W-mR,y2:base,stroke:"var(--grid)","stroke-width":1}));
+  [80,90,100,110,120].forEach(v=>{
+    s.appendChild(el("line",{x1:X(v),y1:base-4,x2:X(v),y2:base+4,stroke:"var(--axis)","stroke-width":1}));
+    const t=el("text",{x:X(v),y:base+17,"text-anchor":"middle","font-size":10,fill:"var(--ink-muted)"});
+    t.textContent=v+"%"; s.appendChild(t);
+  });
+  s.appendChild(el("line",{x1:X(100),y1:mT-8,x2:X(100),y2:base+4,stroke:"var(--text-primary)","stroke-width":2}));
+  const tl=el("text",{x:X(100),y:mT-13,"text-anchor":"middle","font-size":10,"font-weight":700,fill:"var(--text-primary)"});
+  tl.textContent="QUOTA"; s.appendChild(tl);
+  /* Deterministic collision resolution: stack a dot only when it would overlap
+     one already placed, so identical values never render as a single blob. */
+  const placed=[];
+  reps.map(r=>({r,v:r.rev/r.quota*100})).sort((a,b)=>a.v-b.v).forEach(({r,v})=>{
+    const cx=X(v);
+    let row=0; while(placed.some(p=>p.row===row&&Math.abs(p.cx-cx)<14))row++;
+    placed.push({cx,row});
+    const cy=base-13-row*14, at=v>=100;
+    const c=el("circle",{cx,cy,r:6,fill:at?"var(--seq-3)":"var(--surface-base)",
+      stroke:at?"var(--seq-3)":"var(--ink-muted)","stroke-width":2});
+    bindTip(c,`<b>${r.name}</b> · ${r.team}<br>${pct(v)} of quota<br>${mShort(r.rev)} of ${mShort(r.quota)}`);
+    s.appendChild(c);
+  });
+  return s;
+}
+/* --- Funnel: ordinal ramp (validated), 2px gaps, direct labels --- */
+function funnel(rows){
+  const W=560,rowH=30,labelW=118,padR=96,H=rows.length*rowH+4;
+  const max=Math.max(...rows.map(r=>r[1]));
+  const ramp=["var(--seq-1)","var(--seq-2)","var(--seq-3)","var(--seq-4)","var(--seq-4)"];
+  const s=el("svg",{viewBox:`0 0 ${W} ${H}`,width:"100%",height:H,role:"img","aria-label":"pipeline by stage"});
+  rows.forEach((r,i)=>{
+    const y=i*rowH+2,bh=rowH-8;
+    const t=el("text",{x:labelW-8,y:y+bh-4,"text-anchor":"end","font-size":11.5,fill:"var(--text-secondary)"});
+    t.textContent=r[0]; s.appendChild(t);
+    const w=Math.max((r[1]/max)*(W-labelW-padR),1);
+    const p=el("path",{d:barPath(labelW,y,w,bh,4,"h"),fill:ramp[i]});
+    bindTip(p,`<b>${r[0]}</b><br>${mShort(r[1])} open<br>median stage age ${r[2]} days`);
+    s.appendChild(p);
+    const v=el("text",{x:labelW+w+7,y:y+bh-4,"font-size":11.5,"font-weight":650,fill:"var(--text-primary)"});
+    v.textContent=mShort(r[1]); s.appendChild(v);
+    const a=el("text",{x:W-4,y:y+bh-4,"text-anchor":"end","font-size":10.5,fill:"var(--ink-muted)"});
+    a.textContent=r[2]+"d age"; s.appendChild(a);
+  });
+  return s;
+}
+/* --- Credit utilisation meter (single measure, status-coded + labelled) --- */
+function meter(used,limit){
+  const W=560,H=48,barH=16,y=14;
+  const u=used/limit*100, over=u>100;
+  const s=el("svg",{viewBox:`0 0 ${W} ${H}`,width:"100%",height:H,role:"img","aria-label":"credit utilisation"});
+  s.appendChild(el("path",{d:barPath(0,y,W-90,barH,4,"h"),fill:"var(--surface-sunken)"}));
+  const w=Math.max(Math.min(u,100)/100*(W-90),2);
+  const col=over?"var(--st-error)":u>85?"var(--st-warning)":"var(--seq-3)";
+  const p=el("path",{d:barPath(0,y,w,barH,4,"h"),fill:col});
+  bindTip(p,`<b>${pct(u,0)}</b> of credit limit used<br>${money(used)} of ${money(limit)}`); s.appendChild(p);
+  const t=el("text",{x:W-84,y:y+barH-2,"font-size":13,"font-weight":700,
+    fill:over?"var(--error-text)":"var(--text-primary)"});
+  t.textContent=pct(u,0); s.appendChild(t);
+  const l=el("text",{x:0,y:H-3,"font-size":10.5,fill:"var(--ink-muted)"});
+  l.textContent=money(used)+" of "+money(limit)+" limit"; s.appendChild(l);
+  return s;
+}
+/* --- A/R aging: stacked, 2px gaps, status hues + labels --- */
+function aging(rows){
+  const W=560,H=52,barH=20,y=8,total=rows.reduce((a,r)=>a+r[1],0);
+  const s=el("svg",{viewBox:`0 0 ${W} ${H}`,width:"100%",height:H,role:"img","aria-label":"A/R aging"});
+  let x=0;
+  rows.forEach((r,i)=>{
+    const w=(r[1]/total)*W; if(w<=0)return;
+    const seg=Math.max(w-(i<rows.length-1?2:0),1);
+    const p=el("path",{d:barPath(x,y,seg,barH,i===rows.length-1?4:0,"h"),fill:r[2]});
+    bindTip(p,`<b>${r[0]}</b><br>${money(r[1])} · ${pct(r[1]/total*100,0)} of A/R`); s.appendChild(p);
+    if(w>66){
+      const t=el("text",{x:x+5,y:y+barH+15,"font-size":10,fill:"var(--text-secondary)"});
+      t.textContent=r[0]+" "+mShort(r[1]); s.appendChild(t);
+    }
+    x+=w;
+  });
+  return s;
+}
+
+/* ==========================================================================
+   5. HTML BUILDERS
+   ========================================================================== */
+const h=(t,c,html)=>{const e=document.createElement(t);if(c)e.className=c;if(html!=null)e.innerHTML=html;return e;};
+function card(title,sub,evidence,tools){
+  const c=h("div","c");
+  if(evidence){const e=h("span","ev "+evidence[0],evidence[1]);c.appendChild(e);}
+  if(title){const t=h("h3",null,title);if(tools)t.appendChild(tools);c.appendChild(t);}
+  if(sub)c.appendChild(h("p","sub",sub));
+  return c;
+}
+function tile(label,value,deltaHtml,evidence){
+  const c=card(null,null,evidence); c.classList.add("tile");
+  c.appendChild(h("div","lbl",label));
+  c.appendChild(h("div","val",value));
+  if(deltaHtml)c.appendChild(h("div",null,deltaHtml));
+  return c;
+}
+const up=t=>`<span class="delta up">▲ ${t}</span>`;
+const dn=t=>`<span class="delta dn">▼ ${t}</span>`;
+const flat=t=>`<span class="delta flat">${t}</span>`;
+function chip(kind,icon,text){return `<span class="chip ${kind}">${icon} ${text}</span>`;}
+const chipOK=t=>chip("ok","✓",t), chipWarn=t=>chip("warn","!",t),
+      chipErr=t=>chip("err","✕",t), chipNeu=t=>chip("neu","•",t);
+/* table with a paired table-view/chart-view discipline */
+function table(head,rows,opts={}){
+  const w=h("div","tblwrap"),t=document.createElement("table");
+  const th=document.createElement("thead"),tr=document.createElement("tr");
+  head.forEach(c=>{const e=document.createElement("th");
+    if(c.n)e.className="n";e.textContent=c.t||c;tr.appendChild(e);});
+  th.appendChild(tr);t.appendChild(th);
+  const tb=document.createElement("tbody");
+  rows.forEach(r=>{
+    const tr=document.createElement("tr");
+    if(r.click){tr.className="clk";tr.tabIndex=0;tr.addEventListener("click",r.click);
+      tr.addEventListener("keydown",e=>{if(e.key==="Enter")r.click();});}
+    (r.cells||r).forEach((c,i)=>{const td=document.createElement("td");
+      if(head[i]&&head[i].n)td.className="n";
+      if(c&&c.html!==undefined)td.innerHTML=c.html;else td.textContent=c;
+      tr.appendChild(td);});
+    tb.appendChild(tr);
+  });
+  t.appendChild(tb);w.appendChild(t);return w;
+}
+function legend(items){
+  const l=h("div","legend");
+  items.forEach(([col,txt,line])=>{
+    l.appendChild(h("span",null,`<i class="sw ${line?"swline":""}" style="background:${col}"></i>${txt}`));
+  });
+  return l;
+}
+/* toggle between a chart and its equivalent table (contrast-relief rule) */
+function withTableView(c,svg,tbl){
+  const btn=h("button","tabtoggle","Table view");
+  const chartBox=h("div",null),tblBox=h("div","hidden");
+  chartBox.appendChild(svg); tblBox.appendChild(tbl);
+  btn.addEventListener("click",()=>{
+    const showing=tblBox.classList.toggle("hidden");
+    chartBox.classList.toggle("hidden",!showing);
+    btn.textContent=showing?"Table view":"Chart view";
+  });
+  c.querySelector("h3").appendChild(btn);
+  c.appendChild(chartBox); c.appendChild(tblBox);
+  return c;
+}
+
+/* ==========================================================================
+   6. VIEWS
+   ========================================================================== */
+const EV={net:["net",".NET field"],bar:["bar","Barrington"],inf:["inf","Inferred"],blk:["blk","Blocked"]};
+const scopedReps=()=>S.rep==="all"?REPS:REPS.filter(r=>r.id===S.rep);
+const scopeLabel=()=>{const p=PERSONAS.find(x=>x.id===S.persona);return p.scope;};
+
+function viewCSO(tab){
+  const v=h("div"),f=k(),open=openTotal()*f,openMo=openMonth()*f;
+  if(tab===0){
+    const g=h("div","grid");g.style.gridTemplateColumns="repeat(4,1fr)";
+    g.appendChild(tile("Revenue MTD",mShort(CO.revMTD*f),
+      flat(pct(CO.revMTD*f/CO.planMTD*100,1)+" of full-month plan"),EV.bar));
+    g.appendChild(tile("Margin % (net of rebate)",pct(CO.mgn),
+      dn(signPct(CO.mgn-CO.mgnLY)+" vs LY"),EV.net));
+    g.appendChild(tile("Projected month close",mShort(CO.revMTD*f+openMo),
+      flat("actual + "+mShort(openMo)+" shipping this month"),EV.bar));
+    g.appendChild(tile("Open order book (all periods)",mShort(open),
+      flat(kgS(CO.openKg*f)+" · "+Math.round(CO.openLines*f)+" lines"),EV.bar));
+    v.appendChild(g);
+
+    const g2=h("div","grid");g2.style.gridTemplateColumns="1fr 1fr";g2.style.marginTop="12px";
+    const c1=card("Revenue vs plan — month",
+      "Invoiced actual plus only the open book scheduled to ship this month. Caret marks last year.",EV.bar);
+    c1.appendChild(legend([["var(--seq-3)","Invoiced actual"],["var(--seq-1)","Open, ships this month"],
+      ["var(--text-primary)","Plan",1],["var(--ink-muted)","Last year"]]));
+    c1.appendChild(planBar({actual:CO.revMTD*f,open:openMo,plan:CO.planMTD,ly:CO.revMTD_LY,label:"Month revenue vs plan"}));
+    const c2=card("Revenue vs plan — year to date",
+      "Actual only. Adding the full open book here would double-count orders shipping in future periods.",EV.bar);
+    c2.appendChild(legend([["var(--seq-3)","Invoiced actual"],
+      ["var(--text-primary)","Plan",1],["var(--ink-muted)","Last year"]]));
+    c2.appendChild(planBar({actual:CO.revYTD*f,open:0,plan:CO.planYTD,ly:CO.revYTD_LY,label:"YTD revenue vs plan"}));
+    g2.appendChild(c1);g2.appendChild(c2);v.appendChild(g2);
+
+    const g3=h("div","grid");g3.style.gridTemplateColumns="repeat(4,1fr)";g3.style.marginTop="12px";
+    g3.appendChild(tile("Reps at or above quota","4 of 8",flat("50% · "+scopeLabel()+" scope"),EV.net));
+    g3.appendChild(tile("Revenue concentration",pct(CO.top10Share),
+      flat("top 10 customers"),EV.bar));
+    g3.appendChild(tile("Accounts at risk","3",
+      `<div>${chipErr("$13.6M TTM at risk")}</div>`,EV.net));
+    g3.appendChild(tile("New customer revenue",pct(CO.newShare),
+      flat("balance is returning"),EV.inf));
+    v.appendChild(g3);
+
+    const c4=card("Rep attainment distribution",
+      "Each dot is one seller. Filled = at or above quota. Distribution, not an average — the average hides the spread.",EV.net);
+    c4.appendChild(dotStrip(REPS));
+    const t4=table(["Seller","Team",{t:"Revenue",n:1},{t:"Quota",n:1},{t:"Attainment",n:1}],
+      REPS.map(r=>[r.name,r.team,mShort(r.rev),mShort(r.quota),pct(r.rev/r.quota*100,0)]));
+    v.appendChild(withTableView(c4,c4.lastChild,t4));
+    v.appendChild(h("div","note",
+      "<b>Forecast accuracy is absent by design.</b> It needs opportunity change history that does not exist yet — see the Pipeline tab. Projected month close is the ERP-only substitute Barrington uses, and it is not the same metric. Note the deliberate asymmetry: the month bar adds only the open book scheduled to ship this month, while the YTD bar adds nothing — pooling the full open book into a period-to-date figure double-counts future shipments."));
+  }
+  if(tab===1){
+    const g=h("div","grid");g.style.gridTemplateColumns="repeat(3,1fr)";
+    g.appendChild(tile("Margin % net of rebate",pct(CO.mgn),dn(signPct(CO.mgn-CO.mgnLY)+" vs LY"),EV.net));
+    g.appendChild(tile("Maintained margin target",pct(CO.mgnTarget),
+      `<div>${chipWarn(pct(CO.mgnTarget-CO.mgn)+" below target")}</div>`,EV.net));
+    g.appendChild(tile("Realised price per kg","$"+CO.ppk.toFixed(2),
+      dn(signPct((CO.ppk/CO.ppkLY-1)*100)+" vs LY"),EV.bar));
+    v.appendChild(g);
+    const c=card("Margin % trend, 24 months",
+      "Net of supplier rebate. Dashed line is the maintained margin target from Customer Product / Price Book.",EV.net);
+    c.appendChild(lineChart([{name:"Margin % net of rebate",data:MONTHS.map(m=>m.mgn),labels:MONTHS.map(m=>m.label)}],
+      {target:CO.mgnTarget,targetLabel:"target 15.0%"}));
+    v.appendChild(c);
+    const c2=card("Realised price per kg, 24 months",
+      "The earlier warning. Price per unit mass erodes before margin percentage moves, because mix masks it.",EV.bar);
+    c2.appendChild(lineChart([{name:"Price per kg",data:MONTHS.map(m=>m.ppk),labels:MONTHS.map(m=>m.label)}],
+      {fmt:v=>"$"+v.toFixed(2)}));
+    v.appendChild(c2);
+    const c3=card("Revenue by product class, rolling 12 months",
+      "Single hue: this is magnitude across categories, not fourteen identities.",EV.bar);
+    c3.appendChild(rankedBar(CLASSES.map(c=>[c[0],c[1]])));
+    v.appendChild(withTableView(c3,c3.lastChild,
+      table(["Product class",{t:"Rolling 12M revenue",n:1}],CLASSES.map(c=>[c[0],mShort(c[1])]))));
+  }
+  if(tab===2){
+    const c=card("Customers by trailing-12-month revenue",
+      "Click any row to open that account in the Key Account Manager view — one mart, two personas.",EV.bar);
+    c.appendChild(table(
+      ["Customer","Trade class","Status",{t:"TTM revenue",n:1},{t:"Volume",n:1},{t:"Margin %",n:1},{t:"Days since order",n:1}],
+      CUST.map(c2=>({cells:[c2.n,c2.tc,{html:c2.loy==="At risk"?chipErr("At risk"):c2.loy==="Loyal"?chipOK("Loyal"):chipNeu("Active")},
+        mShort(c2.ttm),kgS(c2.kg),pct(c2.mgn),String(c2.last)],
+        click:()=>{S.cust=c2.id;S.persona="kam";S.tab=0;render();}}))));
+    v.appendChild(c);
+    const g=h("div","grid");g.style.gridTemplateColumns="1fr 1fr";g.style.marginTop="12px";
+    const c2=card("Revenue concentration","Top 10 customers as a share of revenue. Concentration risk most dashboards omit.",EV.bar);
+    c2.appendChild(rankedBar([["Top 10 customers",CO.top10Share,"of total revenue"],
+      ["All other customers",100-CO.top10Share,"of total revenue"]],{fmt:v=>pct(v),max:100,labelW:150}));
+    const c3=card("Accounts at risk","Flagged where today is past the ERP expected next order date, beyond tolerance.",EV.net);
+    c3.appendChild(table(["Customer","Overdue",{t:"TTM at risk",n:1}],
+      CUST.filter(x=>x.loy==="At risk").map(x=>({cells:[x.n,{html:chipErr(Math.abs(x.nextDue)+"d past due date")},mShort(x.ttm)],
+        click:()=>{S.cust=x.id;S.persona="kam";S.tab=1;render();}}))));
+    g.appendChild(c2);g.appendChild(c3);v.appendChild(g);
+  }
+  if(tab===3){
+    const g=h("div","grid");g.style.gridTemplateColumns="repeat(3,1fr)";
+    g.appendChild(tile("Open pipeline coverage","2.7×",flat("against remaining quota"),EV.inf));
+    g.appendChild(tile("Quote-to-order conversion","33.1%",up("+2.4pp vs prior 4 qtrs"),EV.inf));
+    g.appendChild(tile("Forecast accuracy","—",`<div>${chipErr("Not buildable")}</div>`,EV.blk));
+    v.appendChild(g);
+    const c=card("Pipeline by stage","Ordinal ramp — stages are ordered, so one hue stepped light to dark, never separate hues.",EV.inf);
+    c.appendChild(funnel(STAGES));
+    v.appendChild(withTableView(c,c.lastChild,
+      table(["Stage",{t:"Open value",n:1},{t:"Median age",n:1}],STAGES.map(s=>[s[0],mShort(s[1]),s[2]+" days"]))));
+    v.appendChild(h("div","note",
+      "<b>Every tile on this tab is inferred, not confirmed.</b> Pipeline needs the ERP-to-CRM salesperson bridge, which is not named anywhere in the roadmap. Forecast accuracy needs Type 2 change history on opportunity stage, amount, close date and forecast category — specify it in Silver now, because it cannot be backfilled. Turn on <b>Show data-source evidence</b> to see this across every view."));
+  }
+  return v;
+}
+
+function viewMgr(tab){
+  const v=h("div"),f=k(),team=S.rep==="all"?REPS:scopedReps();
+  const tRev=team.reduce((a,r)=>a+r.rev,0)*f, tQ=team.reduce((a,r)=>a+r.quota,0);
+  const overLimit=CUST.filter(c=>c.ar>c.lim||c.ar/c.lim>.85);
+  if(tab===0){
+    const g=h("div","grid");g.style.gridTemplateColumns="repeat(4,1fr)";
+    g.appendChild(tile("Team revenue vs plan",mShort(tRev),
+      (tRev>=tQ?up:dn)(signPct((tRev/tQ-1)*100)+" vs quota"),EV.net));
+    g.appendChild(tile("Team margin %",pct(team.reduce((a,r)=>a+r.mgn,0)/team.length),
+      flat("peer median "+pct(15.2)),EV.net));
+    g.appendChild(tile("Accounts needing action",String(team.reduce((a,r)=>a+r.flag,0)),
+      `<div>${chipWarn("reorder date passed")}</div>`,EV.net));
+    g.appendChild(tile("Accounts over credit limit",String(overLimit.length),
+      `<div>${chipErr("shipment blocked")}</div>`,EV.bar));
+    v.appendChild(g);
+    const c=card("Rep scorecard","One row per seller. Click a row to open that seller's own view at Self scope.",EV.inf);
+    c.appendChild(table(
+      ["Seller","Team",{t:"Revenue",n:1},{t:"Attainment",n:1},"",{t:"Margin %",n:1},{t:"Coverage",n:1},{t:"Quote conv.",n:1},{t:"Flagged",n:1}],
+      team.map(r=>{const at=r.rev/r.quota*100;return {cells:[
+        r.name,r.team,mShort(r.rev),pct(at,0),
+        {html:`<div class="mini"><i style="width:${Math.min(at,100)}%"></i></div>`},
+        pct(r.mgn),r.cov.toFixed(1)+"×",pct(r.qc,0),
+        {html:r.flag>4?chipErr(r.flag+" at risk"):r.flag>0?chipWarn(r.flag+" at risk"):chipOK("clear")}
+      ],click:()=>{S.rep=r.id;S.persona="rep";S.tab=0;render();}};})));
+    v.appendChild(c);
+    v.appendChild(h("div","note","<b>This card is the one genuinely Team-only metric.</b> Everything else on this tab is a Company-scope metric read at Team scope — the same mart column, not a second build."));
+  }
+  if(tab===1){
+    const c=card("Account action queue",
+      "Ranked by trailing-12-month revenue at risk. At Self scope this same query is the rep's call list.",EV.net);
+    c.appendChild(table(
+      ["Customer","Owner","Trigger",{t:"TTM at risk",n:1},{t:"Days since order",n:1},"Credit"],
+      CUST.filter(c2=>c2.nextDue<0).sort((a,b)=>b.ttm-a.ttm).map(c2=>({cells:[
+        c2.n,(REPS.find(r=>r.id===c2.rep)||{}).name,
+        {html:c2.nextDue<-30?chipErr(Math.abs(c2.nextDue)+"d past expected reorder"):chipWarn(Math.abs(c2.nextDue)+"d past expected reorder")},
+        mShort(c2.ttm),String(c2.last),
+        {html:c2.ar>c2.lim?chipErr("over limit"):c2.ar/c2.lim>.85?chipWarn(pct(c2.ar/c2.lim*100,0)+" used"):chipOK("ok")}
+      ],click:()=>{S.cust=c2.id;S.persona="kam";S.tab=1;render();}}))));
+    v.appendChild(c);
+    const c2=card("Credit exposure — accounts at or over limit",
+      "A sales-blocking condition. The rep needs this before they call, not after the order is rejected.",EV.bar);
+    c2.appendChild(table(["Customer",{t:"A/R balance",n:1},{t:"Credit limit",n:1},{t:"Utilisation",n:1},"Status"],
+      overLimit.map(c3=>({cells:[c3.n,money(c3.ar),money(c3.lim),pct(c3.ar/c3.lim*100,0),
+        {html:c3.ar>c3.lim?chipErr("over limit"):chipWarn("near limit")}],
+        click:()=>{S.cust=c3.id;S.persona="kam";S.tab=2;render();}}))));
+    v.appendChild(c2);
+  }
+  if(tab===2){
+    const c=card("Team pipeline by stage","Stage age is the coaching signal, not stage value.",EV.inf);
+    c.appendChild(funnel(STAGES.map(s=>[s[0],s[1]*0.34,s[2]])));
+    v.appendChild(withTableView(c,c.lastChild,
+      table(["Stage",{t:"Open value",n:1},{t:"Median age",n:1}],STAGES.map(s=>[s[0],mShort(s[1]*0.34),s[2]+" days"]))));
+    const c2=card("Quote aging — issued, not converted","Ageing-out rule for quotes that never resolve is still undefined.",EV.inf);
+    c2.appendChild(rankedBar([["0–14 days",4200000],["15–30 days",2800000],["31–60 days",1900000],
+      ["61–90 days",900000],["90+ days",1400000]],{labelW:96}));
+    v.appendChild(c2);
+  }
+  return v;
+}
+
+function viewRep(tab){
+  const v=h("div"),f=k();
+  const me=S.rep==="all"?REPS[0]:REPS.find(r=>r.id===S.rep)||REPS[0];
+  const mine=CUST.filter(c=>c.rep===me.id);
+  const at=me.rev*f/me.quota*100;
+  if(tab===0){
+    v.appendChild(h("div","note",
+      `Viewing as <b>${me.name}</b> (${me.team}). <b>This persona introduces no unique metric</b> — every card here is a metric from the Company or Team views, read at Self scope. That is the point of a shared seller mart: the rep view costs no additional build.`));
+    const g=h("div","grid");g.style.gridTemplateColumns="repeat(4,1fr)";g.style.marginTop="12px";
+    g.appendChild(tile("My attainment",pct(at,0),
+      (at>=100?up:dn)(mShort(me.quota-me.rev*f)+" to quota"),EV.net));
+    g.appendChild(tile("My margin %",pct(me.mgn),
+      (me.mgn>=15.2?up:dn)(signPct(me.mgn-15.2)+" vs team median"),EV.net));
+    g.appendChild(tile("My accounts",String(mine.length),
+      flat(mShort(mine.reduce((a,c)=>a+c.ttm,0))+" TTM"),EV.bar));
+    g.appendChild(tile("Needing a call today",String(mine.filter(c=>c.nextDue<0).length),
+      `<div>${chipWarn("past expected reorder")}</div>`,EV.net));
+    v.appendChild(g);
+    const c=card("My call list","Ranked by revenue at risk. The Team action queue, scoped to me.",EV.net);
+    c.appendChild(table(["Customer","Trigger",{t:"TTM at risk",n:1},{t:"Days since order",n:1},"Credit","Last contact"],
+      mine.sort((a,b)=>a.nextDue-b.nextDue).map(c2=>({cells:[
+        c2.n,
+        {html:c2.nextDue<0?(c2.nextDue<-30?chipErr(Math.abs(c2.nextDue)+"d overdue"):chipWarn(Math.abs(c2.nextDue)+"d overdue")):chipOK("on cadence")},
+        mShort(c2.ttm),String(c2.last),
+        {html:c2.ar>c2.lim?chipErr("over limit"):chipOK("ok")},
+        (c2.last+3)+"d ago"
+      ],click:()=>{S.cust=c2.id;S.persona="kam";S.tab=0;render();}}))));
+    v.appendChild(c);
+    const c2=card("My orders shipping in the next 7 days","Service risk is a sales conversation before it is a logistics one.",EV.bar);
+    c2.appendChild(table(["Customer","SO #","Item","To ship",{t:"Open qty",n:1}],
+      SHIP7.map(r=>[r[0],r[1],r[2],r[3],nf.format(r[4])])));
+    v.appendChild(c2);
+  }
+  if(tab===1){
+    const c=card("My revenue vs quota",
+      "Invoiced actual against my quota, year to date. Caret is last year.",EV.net);
+    c.appendChild(legend([["var(--seq-3)","Invoiced actual"],["var(--text-primary)","Quota",1],["var(--ink-muted)","Last year"]]));
+    c.appendChild(planBar({actual:me.rev*f,open:0,plan:me.quota,ly:me.rev*0.94,label:"My revenue vs quota"}));
+    v.appendChild(c);
+    const c2=card("My margin % vs team median, 24 months",
+      "Two series, so a legend is always present and both are directly labelled.",EV.net);
+    c2.appendChild(legend([["var(--series-1)","My margin %",1],["var(--series-2)","Team median",1]]));
+    c2.appendChild(lineChart([
+      {name:"My margin %",data:MONTHS.map(m=>+(m.mgn+(me.mgn-14)).toFixed(1)),labels:MONTHS.map(m=>m.label)},
+      {name:"Team median",data:MONTHS.map(m=>+(m.mgn+1.1).toFixed(1)),labels:MONTHS.map(m=>m.label)}
+    ]));
+    v.appendChild(c2);
+    const c3=card("My revenue by product class","Where my book is concentrated.",EV.bar);
+    c3.appendChild(rankedBar(CLASSES.slice(0,8).map(c4=>[c4[0],c4[1]*0.12])));
+    v.appendChild(c3);
+  }
+  return v;
+}
+
+function viewKam(tab){
+  const v=h("div"),c0=CUST.find(x=>x.id===S.cust)||CUST[0];
+  const sel=h("div","c");
+  sel.style.display="flex";sel.style.alignItems="center";sel.style.gap="12px";
+  sel.appendChild(h("div",null,`<div class="lbl" style="font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-muted);font-weight:600">Account</div>`));
+  const s=document.createElement("select");
+  CUST.forEach(c=>{const o=document.createElement("option");o.value=c.id;o.textContent=c.n;
+    if(c.id===S.cust)o.selected=true;s.appendChild(o);});
+  s.addEventListener("change",()=>{S.cust=s.value;render();});
+  sel.appendChild(s);
+  sel.appendChild(h("div",null,
+    `${c0.loy==="At risk"?chipErr("At risk"):c0.loy==="Loyal"?chipOK("Loyal"):chipNeu("Active")}
+     ${chipNeu(c0.tc+" trade class")} ${chipNeu("Owner: "+(REPS.find(r=>r.id===c0.rep)||{}).name)}`));
+  v.appendChild(sel);
+
+  if(tab===0){
+    const g=h("div","grid");g.style.gridTemplateColumns="repeat(4,1fr)";g.style.marginTop="12px";
+    g.appendChild(tile("TTM revenue",mShort(c0.ttm),flat(kgS(c0.kg)),EV.bar));
+    g.appendChild(tile("Margin % net of rebate",pct(c0.mgn),
+      (c0.mgn>=15?up:dn)(signPct(c0.mgn-15)+" vs 15% target"),EV.net));
+    g.appendChild(tile("Product classes bought",c0.cls+" of 14",
+      flat((14-c0.cls)+" classes unbought"),EV.inf));
+    g.appendChild(tile("Days since last order",String(c0.last),
+      c0.nextDue<0?`<div>${chipErr(Math.abs(c0.nextDue)+"d past expected")}</div>`:`<div>${chipOK("on cadence")}</div>`,EV.net));
+    v.appendChild(g);
+    const c=card("Revenue and volume, last four years",
+      "Two measures of different scale, so two columns in a table rather than a dual axis.",EV.bar);
+    c.appendChild(table([{t:"Year",n:0},{t:"Revenue",n:1},{t:"vs LY",n:1},{t:"Volume",n:1},{t:"Margin %",n:1}],
+      [["2023",mShort(c0.ttm*.72),"+6.3%",kgS(c0.kg*.80),pct(c0.mgn+1.8)],
+       ["2024",mShort(c0.ttm*.84),"+16.6%",kgS(c0.kg*.89),pct(c0.mgn+1.1)],
+       ["2025",mShort(c0.ttm*.94),"+11.7%",kgS(c0.kg*.97),pct(c0.mgn+.4)],
+       ["2026 YTD",mShort(c0.ttm*.58),"-37.6%",kgS(c0.kg*.55),pct(c0.mgn)]]));
+    v.appendChild(c);
+    const c2=card("Rolling 12-month revenue by product class",
+      "Classes bought and, by absence, classes not bought. This is the share-of-wallet substitute.",EV.bar);
+    c2.appendChild(rankedBar(CLASSES.slice(0,c0.cls).map((cl,i)=>[cl[0],c0.ttm*(0.34/(i+1.1))])));
+    v.appendChild(c2);
+    v.appendChild(h("div","note",
+      "<b>Not true share of wallet.</b> That needs a peer-group or target-account universe that exists in neither ERP nor CRM. Class breadth plus reorder decay catches most of the same erosion and costs nothing extra."));
+  }
+  if(tab===1){
+    const c=card("Reorder cadence by product",
+      "Primary rule is actual against the ERP <i>Date Next Order</i> / <i>Reorder Week</i>. The computed interval is only a fallback where those fields are unpopulated.",EV.net);
+    const rows=CLASSES.slice(0,Math.max(c0.cls,3)).map((cl,i)=>{
+      const due=c0.nextDue+i*7, ordF=(12-i*1.3).toFixed(1);
+      return {cells:[cl[0],
+        {html:due<0?(due<-30?chipErr(Math.abs(due)+"d overdue"):chipWarn(Math.abs(due)+"d overdue")):chipOK(due===0?"due today":"in "+due+"d")},
+        String(c0.last+i*4),ordF+" /yr",
+        {html:i%3===2?chipNeu("computed fallback"):chipOK("ERP stored")}]};
+    });
+    c.appendChild(table(["Product class","Expected next order",{t:"Days since order",n:1},{t:"Order frequency",n:1},"Rule fired"],rows));
+    v.appendChild(c);
+    const c2=card("Order frequency — stored in ERP, not computed",
+      "Datacor already holds this at customer × product for three periods. Consume and validate; do not reimplement.",EV.net);
+    c2.appendChild(table([{t:"Period",n:0},{t:"Order frequency",n:1},{t:"Revenue",n:1},{t:"Volume",n:1}],
+      [["Year to date","9.4 /yr",mShort(c0.ttm*.58),kgS(c0.kg*.55)],
+       ["Last year to date","11.2 /yr",mShort(c0.ttm*.71),kgS(c0.kg*.68)],
+       ["Last year","10.8 /yr",mShort(c0.ttm*.94),kgS(c0.kg*.97)]]));
+    v.appendChild(c2);
+    const c3=card("Order pattern by ship-to",
+      "A distributor loses one ship-to at a time; the account total moves months later.",EV.net);
+    c3.appendChild(rankedBar([["Plant 1 — Ohio",c0.ttm*.44],["Plant 2 — Texas",c0.ttm*.31],
+      ["Plant 3 — Ontario",c0.ttm*.17],["Contract packer",c0.ttm*.08]],{labelW:132}));
+    v.appendChild(c3);
+  }
+  if(tab===2){
+    const g=h("div","grid");g.style.gridTemplateColumns="repeat(3,1fr)";g.style.marginTop="12px";
+    g.appendChild(tile("A/R balance",money(c0.ar),
+      c0.past>0?`<div>${chipErr(money(c0.past)+" past due")}</div>`:`<div>${chipOK("nothing past due")}</div>`,EV.bar));
+    g.appendChild(tile("Average days to pay",c0.dtp.toFixed(1),
+      (c0.dtp>c0.dtpP?dn:up)(signPct(c0.dtp-c0.dtpP,1)+" days vs prior 3 months"),EV.bar));
+    g.appendChild(tile("Credit utilisation",pct(c0.ar/c0.lim*100,0),
+      c0.ar>c0.lim?`<div>${chipErr("over limit")}</div>`:c0.ar/c0.lim>.85?`<div>${chipWarn("near limit")}</div>`:`<div>${chipOK("headroom")}</div>`,EV.bar));
+    v.appendChild(g);
+    const c=card("Credit utilisation","Status colour is paired with a label; the colour never carries the meaning alone.",EV.bar);
+    c.appendChild(meter(c0.ar,c0.lim));
+    v.appendChild(c);
+    const c2=card("Average days to pay — trailing 3 months vs prior 3",
+      "The <b>delta</b> is the leading signal, not the level. A good payer slowing down is the earliest churn and credit warning in the dataset.",EV.bar);
+    c2.appendChild(table([{t:"Window",n:0},{t:"Avg days to pay",n:1},{t:"Change",n:1},"Read"],
+      [["Trailing 3 months",c0.dtp.toFixed(1),signPct(c0.dtp-c0.dtpP,1),
+        {html:c0.dtp-c0.dtpP>5?chipErr("slowing materially"):c0.dtp-c0.dtpP>1?chipWarn("slowing"):chipOK("stable or improving")}],
+       ["Prior 3 months",c0.dtpP.toFixed(1),"—",{html:chipNeu("baseline")}]]));
+    v.appendChild(c2);
+    const c3=card("A/R aging","Consumed from the Phase 1 CFO mart. Not rebuilt here.",EV.bar);
+    c3.appendChild(aging([["Current",c0.ar-c0.past,"var(--seq-3)"],
+      ["31–60",c0.past*.5,"var(--st-warning)"],["61–90",c0.past*.3,"var(--st-serious,#EF6C00)"],
+      ["90+",c0.past*.2,"var(--st-error)"]]));
+    v.appendChild(withTableView(c3,c3.lastChild,table(["Bucket",{t:"Amount",n:1}],
+      [["Current",money(c0.ar-c0.past)],["31–60",money(c0.past*.5)],["61–90",money(c0.past*.3)],["90+",money(c0.past*.2)]])));
+  }
+  return v;
+}
+
+/* ==========================================================================
+   7. RENDER
+   ========================================================================== */
+function renderRail(){
+  const r=document.getElementById("rail");
+  r.innerHTML='<div class="railhead">Persona</div>';
+  PERSONAS.forEach(p=>{
+    const b=h("button","pbtn");
+    b.setAttribute("aria-current",String(S.persona===p.id));
+    b.innerHTML=`<b>${p.name}</b><i>${p.desc}</i><span class="scopechip">${p.scope} scope</span>`;
+    b.addEventListener("click",()=>{S.persona=p.id;S.tab=0;render();});
+    r.appendChild(b);
+  });
+  r.appendChild(h("div","railnote",
+    "<b>Four roles, two marts.</b> The first three are one seller mart at three scopes. Only the Key Account Manager works a different axis — one account deep instead of one territory wide."));
+}
+function renderTabs(){
+  const p=PERSONAS.find(x=>x.id===S.persona),t=document.getElementById("subtabs");
+  t.innerHTML="";
+  p.tabs.forEach((name,i)=>{
+    const b=document.createElement("button");
+    b.textContent=name; b.setAttribute("aria-current",String(S.tab===i));
+    b.addEventListener("click",()=>{S.tab=i;render();});
+    t.appendChild(b);
+  });
+}
+function render(){
+  renderRail(); renderTabs();
+  document.getElementById("asof").textContent="Data as of "+ASOF_LABEL[S.asof]+
+    "  ·  scope: "+scopeLabel()+(S.so!=="all"?"  ·  SO type: "+S.so:"");
+  const v=document.getElementById("view"); v.innerHTML="";
+  const fn={cso:viewCSO,mgr:viewMgr,rep:viewRep,kam:viewKam}[S.persona];
+  v.appendChild(fn(S.tab));
+  const rs=document.getElementById("fRep");
+  if(rs.value!==S.rep)rs.value=S.rep;
+  tip.style.opacity=0;
+}
+/* filters */
+const repSel=document.getElementById("fRep");
+repSel.innerHTML='<option value="all">All</option>'+REPS.map(r=>`<option value="${r.id}">${r.name}</option>`).join("");
+repSel.addEventListener("change",()=>{S.rep=repSel.value;render();});
+document.getElementById("fDate").addEventListener("change",e=>{S.asof=e.target.value;render();});
+document.getElementById("fSO").addEventListener("click",e=>{
+  const b=e.target.closest("button"); if(!b)return;
+  [...e.currentTarget.children].forEach(x=>x.setAttribute("aria-pressed",String(x===b)));
+  S.so=b.dataset.so; render();
+});
+document.getElementById("tEv").addEventListener("change",e=>{
+  document.body.classList.toggle("showev",e.target.checked);
+});
+render();
+</script>
+</body>
+</html>
