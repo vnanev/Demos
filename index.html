@@ -796,7 +796,7 @@ function sheetCSO(tab){
     c2.appendChild(line([{n:"Price per kg",d:g.trend.map(t=>t.ppk),l:g.trend.map(t=>t.label)}],{fmt:PKG}));
     r2.appendChild(c1);r2.appendChild(c2);v.appendChild(r2);
     const r3=row("g1");
-    const c3=card("Revenue and margin by product class","Table · conditional formatting on margin %");
+    const c3=card("Revenue and margin by product class");
     const tot={rev:0,mgn:0,cost:0,reb:0,kg:0};
     const L=rows().filter(l=>inYTD(l.m,CUR_Y()));
     const byC={};L.forEach(l=>{const w=wMonth(l.m);const o=byC[l.ci]||(byC[l.ci]={rev:0,cost:0,reb:0,kg:0});
@@ -813,8 +813,8 @@ function sheetCSO(tab){
     v.appendChild(reconLine());
   }
   if(tab===2){
-    const r1=row("g4");
-    const c=card("Customers","Table · click a row to open Customer 360");
+    const r1=row("g1");
+    const c=card("Customers");
     c.appendChild(tbl(["Customer","Trade class","Status",{t:"Revenue YTD",n:1},{t:"Classes bought",n:1},{t:"Days since order",n:1},"Credit"],
       g.byCust.map(x=>{const worst=x.classes[0],since=Math.max(0,worst.sinceLast-dEl());
         const over=since>worst.interval*1.5;
@@ -829,7 +829,7 @@ function sheetCSO(tab){
     const r2=row("g2");
     const c2=card("Revenue by product class");
     c2.appendChild(barH(g.byClass.map(x=>[x[0],x[1]]),{lw:150}));
-    const c3=card("Accounts at risk","Table · reorder date passed beyond tolerance");
+    const c3=card("Accounts at risk");
     c3.appendChild(tbl(["Customer","Overdue class",{t:"Days over",n:1},{t:"Revenue YTD",n:1}],
       g.atRisk.map(x=>{const w=x.classes[0];
         return {c:[x.n,CLSN[w.ci],String(Math.max(0,w.sinceLast-dEl()-w.interval)),M((g.byCust.find(y=>y.id===x.id)||{}).rev||0)],
@@ -871,8 +871,8 @@ function sheetMGR(tab){
     r1.appendChild(KPI({label:"Accounts over credit limit",value:String(over.length),
       cmp:over.length?"shipment blocked":"all clear",dir:over.length?-1:1}));
     v.appendChild(r1);
-    const r2=row("g4");
-    const c=card("Seller scorecard","Table · conditional formatting · click a row to open that seller");
+    const r2=row("g1");
+    const c=card("Seller scorecard");
     c.appendChild(tbl(["Seller","Team",{t:"Revenue YTD",n:1},{t:"Plan YTD",n:1},{t:"Attainment",n:1},
         {t:"Margin %",n:1},{t:"Coverage",n:1},{t:"Quote conv.",n:1},{t:"At-risk accounts",n:1}],
       g.reps.slice().sort((a,b)=>b.att-a.att).map(r=>({c:[r.n,r.team,M(r.rev),M(r.plan),
@@ -887,8 +887,8 @@ function sheetMGR(tab){
     v.appendChild(reconLine());
   }
   if(tab===1){
-    const r1=row("g4");
-    const c=card("Account action queue","Table · ranked by revenue exposed");
+    const r1=row("g1");
+    const c=card("Account action queue");
     const q=[];
     custList().forEach(x=>x.classes.forEach(cl=>{
       const since=cl.sinceLast-dEl(), over=since-cl.interval;
@@ -902,7 +902,7 @@ function sheetMGR(tab){
         click:()=>{S.cust=o.x.id;S.sheet=3;S.tab=1;draw();}}))));
     r1.appendChild(c);v.appendChild(r1);
     const r2=row("g1");
-    const c2=card("Credit exposure","Table · accounts at or over limit");
+    const c2=card("Credit exposure");
     c2.appendChild(tbl(["Customer",{t:"A/R balance",n:1},{t:"Credit limit",n:1},{t:"Utilisation",n:1},{t:"Avg days to pay",n:1},"Status"],
       over.sort((a,b)=>G.ar[b.id].bal/b.lim-G.ar[a.id].bal/a.lim).map(x=>({c:[x.n,M0(G.ar[x.id].bal),M0(x.lim),
         P(G.ar[x.id].bal/x.lim*100,0),G.ar[x.id].dtp.toFixed(1),
@@ -942,8 +942,8 @@ function sheetREP(tab){
     r1.appendChild(KPI({label:"Lines needing a call",value:String(me.flag),
       cmp:me.flag?"past expected reorder":"on cadence",dir:me.flag?-1:1}));
     v.appendChild(r1);
-    const r2=row("g4");
-    const c=card("My call list","Table · ranked by days over expected reorder");
+    const r2=row("g1");
+    const c=card("My call list");
     const q=[];mine.forEach(x=>x.classes.forEach(cl=>{
       const since=cl.sinceLast-dEl(),over=since-cl.interval;
       q.push({x,cl,since:Math.max(0,since),over:Math.round(over)});}));
@@ -955,7 +955,7 @@ function sheetREP(tab){
         click:()=>{S.cust=o.x.id;S.sheet=3;S.tab=0;draw();}}))));
     r2.appendChild(c);v.appendChild(r2);
     const r3=row("g1");
-    const c2=card("My orders shipping in the next 7 days","Table"+(S.so!=="all"?" · "+S.so+" only":""));
+    const c2=card("My orders shipping in the next 7 days",S.so!=="all"?S.so+" only":null);
     const sh=g.ship7.filter(o=>o.rep===me.id);
     c2.appendChild(sh.length?tbl(["Customer","Product class",{t:"Volume",n:1},{t:"Value",n:1},{t:"Ships in",n:1}],
       sh.map(o=>[(CUST.find(c=>c.id===o.cust)||{}).n,CLSN[o.ci],KG(o.kg),M(o.rev),o.shipIn+"d"]))
@@ -1036,8 +1036,8 @@ function sheetKAM(tab){
     r2.appendChild(c1);r2.appendChild(c2);v.appendChild(r2);
   }
   if(tab===1){
-    const r1=row("g4");
-    const c=card("Reorder cadence by product class","Table · conditional formatting on days over expected");
+    const r1=row("g1");
+    const c=card("Reorder cadence by product class");
     c.appendChild(tbl(["Product class",{t:"Orders / yr",n:1},{t:"Expected every",n:1},{t:"Days since order",n:1},{t:"Days over",n:1},"Status"],
       c0.classes.map(x=>{const since=Math.max(0,x.sinceLast-dEl()),over=Math.round(since-x.interval);
         return [CLSN[x.ci],String(x.perYear),x.interval+"d",String(since),over>0?String(over):"—",
@@ -1046,7 +1046,7 @@ function sheetKAM(tab){
     const r2=row("g2");
     const c2=card("Volume by product class");
     c2.appendChild(barH(c0.classes.map(x=>[CLSN[x.ci],x.annKg]).sort((a,b)=>b[1]-a[1]),{fmt:KG,lw:150}));
-    const c3=card("Open orders","Table"+(S.so!=="all"?" · "+S.so+" only":""));
+    const c3=card("Open orders",S.so!=="all"?S.so+" only":null);
     c3.appendChild(oo.length?tbl(["Product class",{t:"Volume",n:1},{t:"Value",n:1},{t:"Ships in",n:1},"Type"],
       oo.sort((a,b)=>a.shipIn-b.shipIn).slice(0,10).map(o=>[CLSN[o.ci],KG(o.kg),M(o.rev),o.shipIn+"d",
         {html:o.blanket?chip("","blanket"):chip("","order")}]))
