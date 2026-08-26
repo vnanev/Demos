@@ -104,11 +104,12 @@ select{font-family:var(--font-family);font-size:var(--fs-body-sm);color:var(--te
 select:focus-visible{outline:var(--stroke-thick) solid var(--border-focus);outline-offset:1px}
 .w200{width:200px}
 /* ══ TABS: indicator 1.5px, 24px gap to content ══ */
-.tabs{display:flex;border-bottom:var(--stroke-regular) solid var(--border-divider);margin:0 var(--space-4)}
+.tabs{display:flex;border-bottom:var(--stroke-regular) solid var(--border-divider);margin:0 var(--space-4);
+ overflow-x:auto;scrollbar-width:thin}
 .tabs button{border:0;background:transparent;cursor:pointer;font-family:var(--font-family);
  font-size:var(--fs-body-md);line-height:var(--lh-h6);color:var(--text-secondary);
  padding:var(--space-2) var(--space-4);border-bottom:var(--stroke-thick) solid transparent;
- margin-bottom:calc(-1 * var(--stroke-regular))}
+ margin-bottom:calc(-1 * var(--stroke-regular));flex:0 0 auto;white-space:nowrap}
 .tabs button[aria-current="true"]{color:var(--text-c-primary);border-bottom-color:var(--primary-main);
  font-weight:var(--w-medium)}
 main{padding:var(--space-6) var(--space-4) var(--space-12)}
@@ -156,8 +157,7 @@ main{padding:var(--space-6) var(--space-4) var(--space-12)}
 .chip.pri{background:var(--primary-main);color:var(--text-on-primary)}
 button.chip{border:0;cursor:pointer;font-family:var(--font-family)}
 button.chip:focus-visible{outline:var(--stroke-thick) solid var(--border-focus);outline-offset:1px}
-.chip-set{display:flex;gap:var(--space-1);background:var(--neutral-high1);
- border-radius:var(--radius-round);padding:2px;height:28px;align-items:center}
+
 /* ══ TABLE: grey header, striped rows, pagination inside the card ══ */
 table{width:100%;border-collapse:collapse;font-size:var(--fs-body-xs)}
 th{text-align:left;font-weight:var(--w-medium);color:var(--text-secondary);background:var(--neutral-high1);
@@ -183,6 +183,14 @@ tbody tr.tot td{background:var(--neutral-high1);font-weight:var(--w-medium);
 #tip.below::after{bottom:auto;top:-5px;border-top:0;border-bottom:5px solid var(--surface-inverse)}
 svg.chart{display:block;overflow:visible}
 .note{font-size:var(--fs-body-xs);color:var(--text-tertiary);padding:0 var(--space-4)}
+
+/* ══ ADDED: patterns harvested from a production Datacor-customer analytics suite ══ */
+.gauto{grid-template-columns:repeat(auto-fit,minmax(148px,1fr))}
+.mini{display:flex;gap:var(--space-4);flex-wrap:wrap;padding:0 var(--space-4) var(--space-3);
+ font-size:var(--fs-body-xs);color:var(--text-secondary)}
+.mini b{font-weight:var(--w-medium);color:var(--text-primary);font-variant-numeric:tabular-nums}
+.rule{font-size:var(--fs-body-xs);color:var(--text-tertiary);padding:0 var(--space-4) var(--space-3)}
+.cslot{padding:var(--space-1) var(--space-4) var(--space-4);overflow-x:auto;min-width:0}
 /* ══ FIVE GDS BREAKPOINTS: xs 0 · sm 600 · md 900 · lg 1200 · xl 1536 ══ */
 .g4,.g3,.g2,.g1{grid-template-columns:1fr}
 @media (min-width:600px){.g4,.g3{grid-template-columns:repeat(2,minmax(0,1fr))}}
@@ -214,16 +222,58 @@ svg.chart{display:block;overflow:visible}
     <main id="view"></main>
   </div>
 </div>
-<div id="tip" role="status" aria-live="polite"></div>
-<script>
+<div id="tip" role="status" aria-live="polite"></div><script>
 "use strict";
-/* ═══════════════════════════════════════════════════════════════════════
-   1. DATA MODEL — generated from product-class economics upward, so every
-      total reconciles by construction:
-        company revenue == sum(reps) == sum(customers) == sum(product classes)
-      Revenue = kg x price. Cost = revenue x (1 - grossMargin%).
-      Rebate  = revenue x rebate%. Margin net of rebate = rev - cost + rebate.
-   ═══════════════════════════════════════════════════════════════════════ */
+/* ═══════════════════════════════════════════════════════════════════════════
+   PATTERNS BORROWED FROM A PRODUCTION DATACOR-CUSTOMER ANALYTICS SUITE
+   ───────────────────────────────────────────────────────────────────────────
+   Five mechanics observed working in the field are wired in here:
+
+   1. A PERIOD parameter (Day · WTD · MTD · QTD · HTD · YTD · R1M · R3M · R6M
+      · R12M) that re-scopes every measure on the sheet. Not one visual per
+      period — one visual, one measure definition, one parameter.
+   2. A COMPARISON parameter (vs. last year / vs. prior period of equal length).
+   3. WORKING-DAY pacing — # working days, worked, remaining — because
+      attainment paces on selling days, not calendar days.
+   4. A MEASURE parameter, so one page answers ten questions.
+   5. RFM + ABC + trend BANDING as configurable rules, which is what actually
+      produces the customer-count metrics (acquired / active / loyal / repeat /
+      high volume / at risk / lost).
+
+   Also adopted from that suite's data model: sales split into PRODUCT SALES
+   (invoice line) and OTHER SALES (miscellaneous charges, which sit on the
+   invoice HEADER), giving two distinct gross-margin definitions; order-level
+   CUSTOMER OTIF; and ASP / ATV.
+
+   All of it requires a day-grain fact table, so the fact layer below is
+   invoice-line-with-a-real-date rather than a monthly bucket.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ─── 1. CALENDAR ─────────────────────────────────────────────────────────
+   Day 0 = 1 Jan 2024, so every window — including a rolling-12-month window
+   compared with the same window a year earlier — has real history behind it. */
+const MON=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+const WDN=["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
+const DAY0=Date.UTC(2024,0,1), MS=86400000;
+const dt=d=>new Date(DAY0+d*MS);
+const di=(y,m,dd)=>Math.round((Date.UTC(y,m,dd)-DAY0)/MS);
+const dim=(y,m)=>new Date(Date.UTC(y,m+1,0)).getUTCDate();
+const mi=d=>{const x=dt(d);return (x.getUTCFullYear()-2024)*12+x.getUTCMonth();};
+const mLbl=i=>MON[i%12]+" '"+String(2024+Math.floor(i/12)).slice(2);
+const isWD=d=>{const w=dt(d).getUTCDay();return w>0&&w<6;};
+const sow=d=>d-((dt(d).getUTCDay()+6)%7);          /* ISO week starts Monday */
+const fmtDay=d=>{const x=dt(d);
+  return WDN[x.getUTCDay()]+" "+x.getUTCDate()+" "+MON[x.getUTCMonth()]+" "+x.getUTCFullYear();};
+const TODAY=di(2026,7,19);                          /* Wed 19 Aug 2026 */
+
+/* ─── 2. DATA MODEL ───────────────────────────────────────────────────────
+   Built upward from product-class economics so every total reconciles by
+   construction: product sales == sum(sellers) == sum(customers) == sum(classes).
+   Revenue = kg x price. Cost = revenue x (1 - grossMargin%).
+   Rebate = revenue x rebate%.
+   Other sales are header charges and are deliberately NOT allocated to a
+   product class — that is why the class roll-up reconciles to product sales
+   and not to total sales. ─────────────────────────────────────────────── */
 /* name, $/kg, gross margin %, supplier rebate % of revenue */
 const CLS=[
  ["Minerals",4.20,11.5,1.2],["Nutritional Supplements",9.80,14.0,0.9],
@@ -234,9 +284,8 @@ const CLS=[
  ["Premixes",16.20,19.0,1.1],["Phosphates",3.80,14.5,0.5],
  ["Aminos",28.00,21.0,1.6],["Industrial",1.90,9.5,0.2]];
 const CLSN=CLS.map(c=>c[0]);
-/* Maintained margin target: the ERP Customer Product / Price Book Margin %
-   field. Modelled as each class's gross margin plus 1.5pp of intent. */
-const CLS_TGT=CLS.map(c=>c[2]+1.5);
+/* Maintained margin target — the ERP Customer Product / Price Book Margin %. */
+const CLS_TGT=CLS.map(c=>c[2]-1.0);
 
 const REPS=[
  {id:"r1",n:"A. Okonkwo",  team:"East",   co:"us",att:0.86},
@@ -249,254 +298,549 @@ const REPS=[
  {id:"r8",n:"N. Farrukh",  team:"Key",    co:"us",att:1.03},
  {id:"k1",n:"H. Tremblay", team:"Central",co:"ca",att:1.04},
  {id:"k2",n:"D. Beauchamp",team:"Central",co:"ca",att:0.79},
- {id:"k3",n:"R. Ferland",  team:"West",   co:"ca",att:1.05}];
+ {id:"k3",n:"R. Ferland",  team:"West",   co:"ca",att:1.05},
+ {id:"k4",n:"L. Gagnon",   team:"Quebec", co:"ca",att:0.92},
+ {id:"k5",n:"M. Chevalier",team:"East",   co:"ca",att:1.07},
+ {id:"k6",n:"S. Thibault", team:"West",   co:"ca",att:0.74},
+ {id:"k7",n:"A. Rousseau", team:"Quebec", co:"ca",att:0.98}];
 
-/* customer: id, name, rep, trade class, loyalty, annual kg scale,
-   class count, first class index, credit limit, payment behaviour */
+/* id, name, rep, customer category, cadence seed, annual kg, class count,
+   first class index, credit limit, days-to-pay now, days-to-pay prior,
+   first active month, last active month  (0 = Jan 2024, 31 = Aug 2026).
+   Late starts and early stops are what make the acquired / at-risk / lost
+   bands compute from the data instead of being asserted. */
 const CUS=[
- ["c1","Ardent Nutrition",       "r7","National","Loyal",  2140000, 9, 0,2500000,38.1,34.6],
- ["c2","Belmont Health Sciences","r2","National","Loyal",  1180000, 7, 1,1500000,31.4,32.0],
- ["c3","Cascadia Wellness",      "r4","Regional","At risk", 880000, 4, 0,1200000,61.7,44.2],
- ["c4","Dunmore Pharma",         "r8","National","Loyal",   410000, 6, 3,1000000,27.9,28.4],
- ["c5","Everline Labs",          "r1","Regional","Active",  690000, 5, 2, 800000,48.3,39.1],
- ["c6","Fairmount Botanicals",   "r5","Regional","Active",  540000, 5, 4, 750000,33.0,33.8],
- ["c7","Granby Supplements",     "r3","Regional","At risk", 620000, 3, 0, 600000,57.2,41.5],
- ["c8","Halstead Nutraceutical", "r2","Regional","Active",  470000, 4, 5, 500000,35.6,35.1],
- ["c9","Ironwood Health",        "r6","Local",   "Active",  390000, 3, 1, 400000,29.8,30.9],
- ["c10","Juniper Life Sciences", "r5","Local",   "Loyal",   310000, 4, 8, 350000,26.2,27.7],
- ["c11","Kestrel Formulations",  "r6","Local",   "At risk", 280000, 2, 0, 300000,72.4,50.3],
- ["c12","Larkspur Nutrition",    "r1","Local",   "Active",  240000, 3, 6, 250000,32.8,31.4],
- ["c13","Ardent Nutrition West", "r4","National","Loyal",  1460000, 8, 1,1800000,36.4,35.9],
- ["c14","Meadowbrook Ingredients","r3","Regional","Active", 520000, 5, 2, 650000,34.1,33.2],
- ["c15","Sable Peak Nutrition",  "r8","Regional","Loyal",   660000, 6, 4, 700000,30.5,31.2],
- ["d1","Meridian Health Foods",  "k1","National","Loyal",   590000, 6, 1, 700000,30.2,31.0],
- ["d2","Nordique Nutraceutiques","k2","Regional","At risk", 350000, 3, 0, 450000,59.4,43.8],
- ["d3","Oakridge Life Sciences", "k3","Local",   "Active",  220000, 4, 3, 300000,28.6,29.4]];
+ ["c1","Ardent Nutrition",        "r7","National",  "steady", 2140000, 9, 0,2500000,38.1,34.6, 0,31],
+ ["c2","Belmont Health Sciences", "r2","National",  "steady", 1180000, 7, 1,1500000,31.4,32.0, 0,31],
+ ["c3","Cascadia Wellness",       "r4","Regional",  "erratic", 880000, 4, 0,1200000,61.7,44.2, 0,27],
+ ["c4","Dunmore Pharma",          "r8","National",  "steady",  410000, 6, 3,1000000,27.9,28.4, 0,31],
+ ["c5","Everline Labs",           "r1","Regional",  "normal",  690000, 5, 2, 800000,48.3,39.1, 0,31],
+ ["c6","Fairmount Botanicals",    "r5","Regional",  "normal",  540000, 5, 4, 750000,33.0,33.8, 0,31],
+ ["c7","Granby Supplements",      "r3","Regional",  "erratic", 620000, 3, 0, 600000,57.2,41.5, 0,29],
+ ["c8","Halstead Nutraceutical",  "r2","Regional",  "normal",  470000, 4, 5, 500000,35.6,35.1, 0,31],
+ ["c9","Ironwood Health",         "r6","Local",     "normal",  390000, 3, 1, 400000,29.8,30.9, 0,31],
+ ["c10","Juniper Life Sciences",  "r5","Local",     "steady",  310000, 4, 8, 350000,26.2,27.7, 0,31],
+ ["c11","Kestrel Formulations",   "r6","Local",     "erratic", 280000, 2, 0, 300000,72.4,50.3, 0,17],
+ ["c12","Larkspur Nutrition",     "r1","Local",     "normal",  240000, 3, 6, 250000,32.8,31.4, 0,31],
+ ["c13","Ardent Nutrition West",  "r4","National",  "steady", 1460000, 8, 1,1800000,36.4,35.9, 0,31],
+ ["c14","Meadowbrook Ingredients","r3","Regional",  "normal",  520000, 5, 2, 650000,34.1,33.2,22,31],
+ ["c15","Sable Peak Nutrition",   "r8","Regional",  "steady",  660000, 6, 4, 700000,30.5,31.2,21,31],
+ ["d1","Meridian Health Foods",   "k1","National",  "steady",  590000, 6, 1, 700000,30.2,31.0, 0,31],
+ ["d2","Nordique Nutraceutiques", "k2","Regional",  "erratic", 350000, 3, 0, 450000,59.4,43.8, 0,28],
+ ["d3","Oakridge Life Sciences",  "k3","Local",     "normal",  220000, 4, 3, 300000,28.6,29.4, 0,31],
+ ["d4","Prairie Botanical Works", "k4","Regional",  "steady",  480000, 5, 2, 600000,31.8,32.4, 0,31],
+ ["d5","Quesnel Nutrition",       "k5","National",  "steady",  720000, 7, 0, 900000,29.1,30.2, 0,31],
+ ["d6","Riviere Ingredients",     "k6","Regional",  "erratic", 300000, 3, 5, 400000,63.5,45.9, 0,16],
+ ["d7","St. Laurent Nutraceutical","k7","Regional", "normal",  410000, 5, 1, 520000,35.2,34.6, 0,31],
+ ["d8","Tillsonburg Health",      "k1","Local",     "normal",  260000, 4, 6, 330000,33.7,33.1, 0,31],
+ ["d9","Verdun Life Sciences",    "k4","Local",     "steady",  190000, 3, 4, 250000,27.4,28.9, 0,31],
+ ["d10","Wentworth Supplements",  "k6","Regional",  "normal",  340000, 4, 7, 450000,37.9,36.2,24,31]];
+const CATS=["National","Regional","Local"];
 
 /* deterministic pseudo-random, so figures never move between reloads */
-const rnd=(a,b)=>{let h=(a*73856093)^(b*19349663);h=(h^(h>>>13))*1274126177;return ((h>>>0)%10000)/10000;};
+const rnd=(a,b)=>{let x=(a*73856093)^(b*19349663);x=(x^(x>>>13))*1274126177;return ((x>>>0)%10000)/10000;};
+const SEAS=[0.94,0.97,1.06,1.04,1.02,0.99,0.91,0.96,1.05,1.08,1.03,0.95];  /* by calendar month */
+const grow=m=>1+m*0.0042;
 
-/* 24 months, index 0 = Sep 2024 ... 23 = Aug 2026 */
-const MON=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
-const mOf=i=>(8+i)%12, yOf=i=>2024+Math.floor((8+i)/12);
-const mLbl=i=>MON[mOf(i)]+" '"+String(yOf(i)).slice(2);
-const SEAS=[0.94,0.97,1.06,1.04,1.02,0.99,0.91,0.96,1.05,1.08,1.03,0.95]; /* by calendar month */
-const grow=i=>1+i*0.0042;
-
-/* Build the line-level fact: one row per customer x class x month */
-const CUST=[], LINES=[];
+/* ── 2a. Invoice lines, on real dates ──
+   A customer x product class is ordered on a cadence, not every month. That
+   cadence is what the ERP Customer Product reorder fields describe, and it is
+   what makes recency, days-since-order and the reorder-decay flag real rather
+   than asserted. */
+const CUST=[], CMAP={}, LINES=[];
 CUS.forEach((c,ci)=>{
-  const [id,n,rep,tc,loy,kgScale,nc,off,lim,dtp,dtpP]=c;
-  const cust={id,n,rep,tc,loy,lim,dtp,dtpP,co:(REPS.find(r=>r.id===rep)||{}).co,classes:[]};
+  const [id,n,rep,cat,seed,kgScale,nc,off,lim,dtp,dtpP,fm,tm]=c;
+  const cust={id,n,rep,cat,seed,lim,dtp,dtpP,
+    co:(REPS.find(r=>r.id===rep)||{}).co,classes:[],
+    othR:0.011+rnd(ci,301)*0.026,          /* freight, tariff and handling as % of product sales */
+    lateP:0.018+rnd(ci,302)*0.075, shortP:0.008+rnd(ci,303)*0.035};
+  const d0=di(2024,0,1)+Math.round((fm/12)*365), d1=Math.min(TODAY,di(2024,0,1)+Math.round(((tm+1)/12)*365)-1);
+  cust.from=d0; cust.to=d1;
   let wsum=0; const w=[];
   for(let j=0;j<nc;j++){const x=0.35+rnd(ci,j)*1.4;w.push(x);wsum+=x;}
   for(let j=0;j<nc;j++){
-    const cIdx=(off+j*3+ (ci%2))%CLS.length;
+    const cIdx=(off+j*3+(ci%2))%CLS.length;
     if(cust.classes.some(x=>x.ci===cIdx))continue;
     const annKg=kgScale*(w[j]/wsum);
-    cust.classes.push({ci:cIdx,annKg});
-    for(let m=0;m<24;m++){
-      const kg=annKg/12*SEAS[mOf(m)]*grow(m)*(0.86+rnd(ci*31+j,m)*0.28);
-      const price=CLS[cIdx][1]*(0.94+rnd(ci,cIdx)*0.13)*(1-m*0.0016); /* mild price erosion */
-      const rev=kg*price, cost=rev*(1-CLS[cIdx][2]/100), reb=rev*CLS[cIdx][3]/100;
-      LINES.push({cust:id,rep,co:cust.co,ci:cIdx,m,kg,rev,cost,reb});
+    /* orders per year for this class: 2 to 14, the ERP Order Frequency field */
+    const perYear=Math.max(6,Math.round(8+rnd(ci,j+50)*22));
+    const iv=Math.round(365/perYear);
+    /* Contract price is negotiated at customer x product and does not erode.
+       The invoiced price wobbles around it and drifts below over time — that
+       gap is PRICE LEAKAGE, a different mechanism from margin erosion, and the
+       reason cost must be anchored to the contract price rather than to
+       whatever was actually charged. */
+    const cPrice=CLS[cIdx][1]*(0.92+rnd(ci,cIdx)*0.16);
+    /* realised-to-contract discipline for this customer x class: 0.955 to
+       1.030, so the book contains genuine leakage, genuine adherence, and a
+       little spot premium rather than one uniform drift */
+    const pFac=0.958+rnd(ci,cIdx+700)*0.079;
+    const cl={ci:cIdx,annKg,perYear,ivNom:iv,cPrice,days:[]};
+    /* an erratic account stretches its interval late in life, which is how a
+       decaying account actually looks before it stops */
+    const drift=seed==="erratic"?1:seed==="normal"?1:1;
+    let k=0;
+    for(let d=d0+Math.round(rnd(ci,j+70)*iv); d<=d1; ){
+      const m=mi(d);
+      const kg=annKg/perYear*SEAS[m%12]*grow(m)*(0.80+rnd(ci*37+j,k)*0.40);
+      const price=cPrice*pFac*(1+(rnd(ci*29+j,k+400)-0.5)*0.028-m*0.0004);
+      const rev=kg*price, cRev=kg*cPrice;
+      LINES.push({cust:id,rep,co:cust.co,cat,ci:cIdx,d,m,kg,rev,cRev,
+        cost:cRev*(1-CLS[cIdx][2]/100), reb:rev*CLS[cIdx][3]/100});
+      cl.days.push(d);
+      const stretch=seed==="erratic"?(1+Math.max(0,(d-d0)/(d1-d0||1))*0.55):1;
+      d+=Math.max(6,Math.round(iv*drift*stretch*(0.78+rnd(ci*41+j,k)*0.46)));
+      k++;
     }
+    if(cl.days.length){cust.classes.push(cl);}
   }
-  CUST.push(cust);
-});
-/* customer-level reorder cadence, derived from the order pattern */
-CUST.forEach((c,ci)=>{
-  c.classes.forEach((cl,j)=>{
-    cl.perYear=Math.max(2,Math.round(4+rnd(ci,j+50)*10));
-    cl.interval=Math.round(365/cl.perYear);
-    const overdueBias=c.loy==="At risk"?1.9:c.loy==="Active"?0.95:0.55;
-    cl.sinceLast=Math.round(cl.interval*overdueBias*(0.6+rnd(ci,j+90)*0.9));
+  cust.classes.forEach(cl=>{
+    cl.firstDay=cl.days[0]; cl.lastDay=cl.days[cl.days.length-1];
+    cl.interval=cl.days.length>1?Math.round((cl.lastDay-cl.firstDay)/(cl.days.length-1)):cl.ivNom;
   });
-  c.classes.sort((a,b)=>(b.sinceLast-b.interval)-(a.sinceLast-a.interval));
+  CUST.push(cust); CMAP[id]=cust;
 });
-/* open orders: one row per line, with ship offset and blanket flag */
+
+/* ── 2b. Invoice headers ──
+   Lines invoiced on the same day for the same customer form one invoice.
+   Miscellaneous charges live HERE, on the header, not on the line — which is
+   exactly why "gross margin % (product)" and "gross margin % (product + other
+   sales)" are two different numbers. */
+const INV=[]; {
+  const k={};
+  LINES.forEach(l=>{const key=l.cust+"|"+l.d; let v=k[key];
+    if(!v){v=k[key]={cust:l.cust,rep:l.rep,co:l.co,cat:l.cat,d:l.d,m:l.m,
+      rev:0,cRev:0,kg:0,cost:0,reb:0,lines:0};k[key]=v;INV.push(v);}
+    v.rev+=l.rev;v.cRev+=l.cRev;v.kg+=l.kg;v.cost+=l.cost;v.reb+=l.reb;v.lines++;});
+  INV.sort((a,b)=>a.cust<b.cust?-1:a.cust>b.cust?1:a.d-b.d);
+  let oid=0,prev=null;
+  INV.forEach((v,i)=>{
+    const c=CMAP[v.cust];
+    v.oth=v.rev*c.othR; v.othCost=v.oth*0.86;      /* accessorials carry thin margin */
+    v.late=rnd(i,401)<c.lateP; v.short=rnd(i,402)<c.shortP;
+    v.otif=!v.late&&!v.short;
+    /* a shipment released in two tranches is one order, two invoices */
+    if(prev&&prev.cust===v.cust&&v.d-prev.d<=6&&rnd(i,403)<0.30)v.ord=prev.ord; else v.ord=++oid;
+    prev=v;});
+}
+
+/* ── 2b-ii. Credit limits ──
+   A limit only means something relative to the balance the account actually
+   runs, so derive it from trailing-365 sales at the customer's own days-to-pay
+   and vary the headroom factor. Hardcoded limits drift out of scale the moment
+   the revenue model changes. */
+CUST.forEach((c,ci)=>{
+  const t=INV.reduce((s,v)=>v.cust===c.id&&v.d>TODAY-365&&v.d<=TODAY?s+v.rev+v.oth:s,0);
+  const bal=t/365*c.dtp;
+  c.lim=Math.max(100000,Math.round(bal*(0.84+rnd(ci,501)*1.55)/50000)*50000);
+});
+
+/* ── 2c. Open order book, point in time ──
+   An order is open between the day it is placed and the day it ships, so the
+   book is correct at any as-of date rather than only at "today". */
 const OPEN=[];
 CUST.forEach((c,ci)=>c.classes.forEach((cl,j)=>{
-  const nOrd=1+Math.floor(rnd(ci,j+11)*3);
-  for(let k2=0;k2<nOrd;k2++){
-    const kg=cl.annKg*(0.03+rnd(ci*7+j,k2)*0.09);
+  for(let d=c.from+Math.round(rnd(ci,j+120)*40); d<=TODAY+40; d+=24+Math.round(rnd(ci*53+j,d%97)*46)){
+    const kg=cl.annKg/9*(0.55+rnd(ci*59+j,d%89)*0.9);
     const price=CLS[cl.ci][1]*(0.94+rnd(ci,cl.ci)*0.13);
-    OPEN.push({cust:c.id,rep:c.rep,co:c.co,ci:cl.ci,kg,rev:kg*price,
-      shipIn:Math.round(rnd(ci*13+j,k2)*44),
-      blanket:rnd(ci*17+j,k2)<0.38});
+    /* a blanket order is scheduled out much further than a discrete one, which
+       is why the two must stay separable — pooling them distorts the age
+       profile as well as the value of the book */
+    const bl=rnd(ci*17+j,d%79)<0.38;
+    const lead=bl?34+Math.round(rnd(ci*61+j,d%83)*146):7+Math.round(rnd(ci*67+j,d%83)*46);
+    OPEN.push({cust:c.id,rep:c.rep,co:c.co,cat:c.cat,ci:cl.ci,kg,rev:kg*price,
+      orderDay:d, shipDay:d+lead, blanket:bl});
   }
 }));
-/* CRM pipeline + quotes */
+
+/* ── 2d. CRM pipeline and quotes, point in time ──
+   In the DW mapping a CRM opportunity IS the quote header, so both live on the
+   same object and are read at two grains: an opportunity has a stage and an
+   expected close; a quote has a decision date and an outcome. */
 const STAGE=["Qualified","Sampling","Trial order","Contract","Committed"];
 const PIPE=[],QUOTE=[];
 REPS.forEach((r,ri)=>{
-  for(let i=0;i<7;i++){
-    const st=Math.floor(rnd(ri,i)*5);
-    PIPE.push({rep:r.id,co:r.co,stage:st,amt:180000+rnd(ri,i+30)*2400000,
-      age:8+Math.round(rnd(ri,i+60)*95)});
+  /* An opportunity and a quote both belong to an account and name a product
+     class, because the DW model makes the CRM opportunity the quote header and
+     Opportunity Product the quote line. Without the account link there is no
+     win/loss by segment, and without the product there is none by product. */
+  const book=CUST.filter(c=>c.rep===r.id);
+  if(!book.length)return;
+  const pick=(i,salt)=>{const c=book[Math.floor(rnd(ri*7+salt,i)*book.length)%book.length];
+    const cl=c.classes[Math.floor(rnd(ri*11+salt,i)*c.classes.length)%c.classes.length];
+    return [c,cl?cl.ci:0];};
+  for(let i=0;i<30;i++){
+    const createDay=Math.round(rnd(ri,i)*(TODAY+20));
+    const life=70+Math.round(rnd(ri,i+30)*300);
+    const [c,ci]=pick(i,1);
+    PIPE.push({rep:r.id,co:r.co,cust:c.id,cat:c.cat,ci,amt:180000+rnd(ri,i+90)*2400000,
+      createDay,closeDay:createDay+life,life,tgt:Math.floor(rnd(ri,i+60)*5)});
   }
-  for(let i=0;i<11;i++){
-    QUOTE.push({rep:r.id,co:r.co,amt:40000+rnd(ri,i+80)*640000,
-      age:Math.round(rnd(ri,i+120)*110),
-      won:rnd(ri,i+150)<(0.20+r.att*0.16)});
+  for(let i=0;i<46;i++){
+    const createDay=Math.round(rnd(ri,i+200)*(TODAY+10));
+    const [c,ci]=pick(i,2);
+    QUOTE.push({rep:r.id,co:r.co,cust:c.id,cat:c.cat,ci,amt:40000+rnd(ri,i+230)*640000,createDay,
+      decideDay:createDay+16+Math.round(rnd(ri,i+260)*100),
+      won:rnd(ri,i+290)<(0.20+r.att*0.16)});
   }
-});
-/* AR, derived from trailing revenue and payment behaviour */
-CUST.forEach(c=>{
-  const ttm=LINES.filter(l=>l.cust===c.id&&l.m>=12).reduce((a,l)=>a+l.rev,0);
-  c.ttm=ttm;
-  c.ar=ttm/365*c.dtp;
-  c.past=c.dtp>45?c.ar*(0.16+(c.dtp-45)/300):0;
-});
-/* rep quota, set so attainment lands on the intended spread */
-REPS.forEach(r=>{
-  const run=LINES.filter(l=>l.rep===r.id&&l.m>=12).reduce((a,l)=>a+l.rev,0);
-  r.quota=run/r.att;
 });
 
-/* ═══════════════════════════════════════════════════════════════════════
-   2. AS-OF: real period arithmetic, not a fudge multiplier
-   ═══════════════════════════════════════════════════════════════════════ */
-const ASOF={
-  today:      {mi:23,frac:19/31,label:"Wed 19 Aug 2026"},
-  yesterday:  {mi:23,frac:18/31,label:"Tue 18 Aug 2026"},
-  lastworkday:{mi:23,frac:17/31,label:"Mon 17 Aug 2026"},
-  lastmonth:  {mi:22,frac:1,   label:"Fri 31 Jul 2026"},
-  lastquarter:{mi:21,frac:1,   label:"Tue 30 Jun 2026"},
-  lastyear:   {mi:15,frac:1,   label:"Wed 31 Dec 2025"}};
+/* ─── 3. PERIOD, COMPARISON AND AS-OF ─────────────────────────────────────
+   Three separate parameters, deliberately. The as-of date anchors the view;
+   the period decides how far back from that anchor every measure reaches; the
+   comparison decides what it is measured against. ─────────────────────────*/
+const RELDATE=[
+ ["today","Today"],["yesterday","Yesterday"],["lastworkday","Last workday"],
+ ["lastweek","Last week"],["lastmonth","Last month"],["lastquarter","Last quarter"],
+ ["lasthalf","Last half"],["lastyear","Last year"]];
+function anchorOf(k){
+  const x=dt(TODAY), y=x.getUTCFullYear(), m=x.getUTCMonth();
+  switch(k){
+    case "yesterday":  return TODAY-1;
+    case "lastworkday":{let d=TODAY-1;while(!isWD(d))d--;return d;}
+    case "lastweek":   return sow(TODAY)-1;
+    case "lastmonth":  return di(y,m,1)-1;
+    case "lastquarter":return di(y,Math.floor(m/3)*3,1)-1;
+    case "lasthalf":   return di(y,m<6?0:6,1)-1;
+    case "lastyear":   return di(y,0,1)-1;
+    default:           return TODAY;
+  }
+}
+/* value, short badge, and the label the Dropdown control shows. HTD has no
+   native QuickSight granularity (TimeGranularity stops at QUARTER) and is
+   therefore period arithmetic in a calculated field, not a relative-date
+   control — same for every rolling option. */
+const PERIODS=[["day","Day","Day"],["wtd","WTD","Week to date (WTD)"],
+ ["mtd","MTD","Month to date (MTD)"],["qtd","QTD","Quarter to date (QTD)"],
+ ["htd","HTD","Half to date (HTD)"],["ytd","YTD","Year to date (YTD)"],
+ ["r1m","R1M","Rolling 1 month (R1M)"],["r3m","R3M","Rolling 3 months (R3M)"],
+ ["r6m","R6M","Rolling 6 months (R6M)"],["r12m","R12M","Rolling 12 months (R12M)"]];
+const PLABEL={day:"the day",wtd:"week to date",mtd:"month to date",qtd:"quarter to date",
+ htd:"half to date",ytd:"year to date",r1m:"rolling 1 month",r3m:"rolling 3 months",
+ r6m:"rolling 6 months",r12m:"rolling 12 months"};
+const TODATE=["day","wtd","mtd","qtd","htd","ytd"];
+const isToDate=p=>TODATE.indexOf(p)>=0;
+function backMonths(b,n){
+  const x=dt(b), y=x.getUTCFullYear(), m=x.getUTCMonth(), dd=x.getUTCDate();
+  const ty=y+Math.floor((m-n)/12), tm=((m-n)%12+12)%12;
+  return di(ty,tm,Math.min(dd,dim(ty,tm)))+1;
+}
+function win(p,b){
+  const x=dt(b), y=x.getUTCFullYear(), m=x.getUTCMonth();
+  switch(p){
+    case "day": return [b,b];
+    case "wtd": return [sow(b),b];
+    case "mtd": return [di(y,m,1),b];
+    case "qtd": return [di(y,Math.floor(m/3)*3,1),b];
+    case "htd": return [di(y,m<6?0:6,1),b];
+    case "ytd": return [di(y,0,1),b];
+    case "r1m": return [backMonths(b,1),b];
+    case "r3m": return [backMonths(b,3),b];
+    case "r6m": return [backMonths(b,6),b];
+    default:    return [backMonths(b,12),b];
+  }
+}
+function pEnd(p,b){
+  const x=dt(b), y=x.getUTCFullYear(), m=x.getUTCMonth();
+  switch(p){
+    case "day": return b;
+    case "wtd": return sow(b)+6;
+    case "mtd": return di(y,m,dim(y,m));
+    case "qtd":{const q=Math.floor(m/3)*3+2;return di(y,q,dim(y,q));}
+    case "htd":{const hh=m<6?5:11;return di(y,hh,dim(y,hh));}
+    case "ytd": return di(y,11,31);
+    default:    return b;
+  }
+}
+const CMPS=[["ly","vs. last year"],["lp","vs. prior period"]];
+function cmpWin(p,b,mode){
+  if(mode==="ly"){
+    const x=dt(b), y=x.getUTCFullYear()-1, m=x.getUTCMonth();
+    return win(p,di(y,m,Math.min(x.getUTCDate(),dim(y,m))));
+  }
+  const [a,z]=win(p,b), len=z-a+1;
+  return [a-len,a-1];
+}
+/* Plan density: seasonal, per day, normalised so a full calendar year sums to
+   exactly one annual quota. That makes plan work for any window — to-date or
+   rolling — without a second plan table. */
+const SEASN=SEAS.reduce((a,b)=>a+b,0)/12;
+const planDay=d=>{const x=dt(d);
+  return SEAS[x.getUTCMonth()]/(12*dim(x.getUTCFullYear(),x.getUTCMonth()))/SEASN;};
+const planWin=(a,b)=>{let s=0;for(let d=a;d<=b;d++)s+=planDay(d);return s;};
+const wdCount=(a,b)=>{let n=0;for(let d=a;d<=b;d++)if(isWD(d))n++;return n;};
+
+/* quota, set so year-to-date attainment at today lands on the intended spread */
+{const a=di(2026,0,1), share=planWin(a,TODAY);
+ REPS.forEach(r=>{
+   const s=new Set(CUST.filter(c=>c.rep===r.id).map(c=>c.id));
+   const rev=INV.reduce((t,v)=>s.has(v.cust)&&v.d>=a&&v.d<=TODAY?t+v.rev+v.oth:t,0);
+   r.quota=rev/(r.att*share||1);});}
+
 const COMPANIES={"Northvale Ingredients":{co:"us",ccy:"USD"},"Northvale Canada ULC":{co:"ca",ccy:"CAD"}};
 const FX={USD:1,CAD:1.37}, SYM={USD:"$",CAD:"C$"};
 const MODES=["light","dark","blue"];
-const S={sheet:0,tab:0,co:"Northvale Ingredients",ccy:"USD",asof:"today",rep:"all",so:"all",cust:"c1",mode:"light"};
+const S={sheet:0,tab:0,co:"Northvale Ingredients",ccy:"USD",asof:"today",
+  period:"ytd",cmp:"ly",rep:"all",cat:"all",so:"all",cust:"c1",meas:"sales",from:0,mode:"light"};
 
 const nf=new Intl.NumberFormat("en-US");
 const fx=v=>v*FX[S.ccy], sy=()=>SYM[S.ccy];
 const M=v=>{const x=fx(v),a=Math.abs(x);return (x<0?"-":"")+sy()+(a>=1e6?(a/1e6).toFixed(a>=1e7?1:2)+"M":a>=1e3?(a/1e3).toFixed(0)+"K":a.toFixed(0));};
 const M0=v=>sy()+nf.format(Math.round(fx(v)));
-const KG=v=>(Math.abs(v)>=1e6?(v/1e6).toFixed(2)+"M":(v/1e3).toFixed(0)+"K")+" kg";
+const KG=v=>(Math.abs(v)>=1e6?(v/1e6).toFixed(2)+"M":Math.abs(v)>=1e3?(v/1e3).toFixed(0)+"K":v.toFixed(0))+" kg";
 const P=(v,d=1)=>(isFinite(v)?v.toFixed(d):"0.0")+"%";
 const SP=(v,d=1)=>{if(!isFinite(v))return "0.0";const r=+v.toFixed(d);return (r>0?"+":r===0?"":"")+r.toFixed(d);};
 const PKG=v=>sy()+fx(v).toFixed(2);
-const A=()=>ASOF[S.asof], coK=()=>COMPANIES[S.co].co, dEl=()=>{
-  const a=A(); return Math.round((23-a.mi)*30.4+(1-a.frac)*30.4); };
-
-/* period selectors driven by the as-of point */
-const wMonth=(m)=>{const a=A();return m<a.mi?1:m===a.mi?a.frac:0;};
-const inYTD=(m,yr)=>yOf(m)===yr&&m<=A().mi;
-const CUR_Y=()=>yOf(A().mi);
-const rows=()=>LINES.filter(l=>l.co===coK()&&(S.rep==="all"||l.rep===S.rep));
-const openRows=()=>OPEN.filter(o=>o.co===coK()&&(S.rep==="all"||o.rep===S.rep)
-  &&(S.so==="all"||(S.so==="blanket")===o.blanket));
-const custList=()=>CUST.filter(c=>c.co===coK()&&(S.rep==="all"||c.rep===S.rep));
+const N=v=>nf.format(Math.round(v));
+const ANCH=()=>anchorOf(S.asof);
+const coK=()=>COMPANIES[S.co].co;
+const catOK=c=>S.cat==="all"||c.cat===S.cat;
+const custList=()=>CUST.filter(c=>c.co===coK()&&(S.rep==="all"||c.rep===S.rep)&&catOK(c));
+const custIdSet=()=>{const s={};custList().forEach(c=>s[c.id]=1);return s;};
 const repList=()=>REPS.filter(r=>r.co===coK());
 const repScope=()=>S.rep==="all"?repList():repList().filter(r=>r.id===S.rep);
 
+/* ─── 4. MEASURES ─────────────────────────────────────────────────────────
+   One bundle per window. Every KPI on every sheet reads from a bundle, so a
+   change of period or comparison moves everything at once. ────────────────*/
+function bundle(invs,a,b){
+  let rev=0,cRev=0,oth=0,cost=0,othCost=0,reb=0,kg=0,tx=0,lines=0;
+  const ord={},cus={};
+  for(let i=0;i<invs.length;i++){const v=invs[i];
+    if(v.d<a||v.d>b)continue;
+    rev+=v.rev;cRev+=v.cRev;oth+=v.oth;cost+=v.cost;othCost+=v.othCost;reb+=v.reb;kg+=v.kg;
+    tx++;lines+=v.lines;cus[v.cust]=1;
+    const o=ord[v.ord]; if(o===undefined)ord[v.ord]=v.otif; else ord[v.ord]=o&&v.otif;}
+  const keys=Object.keys(ord); let ok=0;
+  keys.forEach(k=>{if(ord[k])ok++;});
+  const tot=rev+oth;
+  return {rev,cRev,oth,cost,othCost,reb,kg,tx,lines,tot,orders:keys.length,
+    leak:cRev-rev, priceIdx:cRev?rev/cRev*100:0, cAsp:kg?cRev/kg:0,
+    mgnP:rev?(rev-cost+reb)/rev*100:0,
+    mgnPg:rev?(rev-cost)/rev*100:0,
+    mgnT:tot?(tot-cost-othCost+reb)/tot*100:0,
+    mgn$:rev-cost+reb,
+    asp:kg?rev/kg:0, atv:tx?tot/tx:0,
+    otif:keys.length?ok/keys.length*100:0,
+    cust:Object.keys(cus).length};
+}
+/* the measure parameter */
+const MEAS=[
+ ["sales","Sales",         b=>b.tot,  M,   "Product plus other sales"],
+ ["prod","Product sales",  b=>b.rev,  M,   "Invoice line only"],
+ ["qty","Sales qty",       b=>b.kg,   KG,  "Mass, converted to kg"],
+ ["gm","GM % (product)",   b=>b.mgnP, v=>P(v), "Net of supplier rebate"],
+ ["gmt","GM % (prod+other)",b=>b.mgnT,v=>P(v), "Includes header charges"],
+ ["tx","# Transactions",   b=>b.tx,   N,   "Invoice count"],
+ ["cust","# Customers",    b=>b.cust, N,   "Distinct customers invoiced"],
+ ["asp","ASP per kg",      b=>b.asp,  PKG, "Product sales / volume"],
+ ["atv","ATV",             b=>b.atv,  M,   "Total sales / transaction"],
+ ["otif","Customer OTIF",  b=>b.otif, v=>P(v), "Orders on time and in full"],
+ ["pidx","Price vs contract",b=>b.priceIdx,v=>P(v,1),"Invoiced price as % of contract price"],
+ ["leak","Price leakage",   b=>b.leak,  M,   "Contract value not invoiced"]];
+const measOf=k=>MEAS.find(m=>m[0]===k)||MEAS[0];
+
+/* ─── 5. BANDING RULES ────────────────────────────────────────────────────
+   Recency, frequency, monetary, ABC, relationship length and trend, each a
+   source column banded into a target column. Thresholds are shown on the
+   sheet because in the real product they are customer-configurable. ───────*/
+const RECB=[[30,"0–30 d"],[60,"31–60 d"],[90,"61–90 d"],[180,"91–180 d"],[365,"181–365 d"],[1e9,"365+ d"]];
+const FRQB=[[0,"none"],[12,"1–12"],[36,"13–36"],[72,"37–72"],[120,"73–120"],[1e9,"121+"]];
+const RELB=[[180,"< 6 mo"],[365,"6–12 mo"],[547,"12–18 mo"],[1e9,"18 mo +"]];
+const band=(v,t)=>{for(const [x,l] of t)if(v<=x)return l;return t[t.length-1][1];};
+function segments(){
+  /* The trend rule compares the trailing three months with the SAME three
+     months a year earlier. Comparing with the immediately prior three months
+     reads seasonality as decline — with this seasonal curve it would mark most
+     of the book "Down" every August. */
+  const b=G.b, y1=[b-364,b], p3=[b-89,b], q3=[b-89-365,b-365];
+  const list=custList(), out=[];
+  list.forEach(c=>{
+    const iv=INV.filter(v=>v.cust===c.id&&v.d<=b);
+    if(!iv.length){out.push({c,none:1});return;}
+    const last=iv[iv.length-1].d, first=iv[0].d;
+    const in12=iv.filter(v=>v.d>=y1[0]);
+    const mon=in12.reduce((s,v)=>s+v.rev+v.oth,0);
+    const r3=iv.filter(v=>v.d>=p3[0]&&v.d<=p3[1]).reduce((s,v)=>s+v.rev+v.oth,0);
+    const r3p=iv.filter(v=>v.d>=q3[0]&&v.d<=q3[1]).reduce((s,v)=>s+v.rev+v.oth,0);
+    const tr=r3p?(r3/r3p-1)*100:(r3?100:null);
+    out.push({c,rec:b-last,freq:in12.length,mon,rel:b-first,
+      trend:tr==null?"—":tr>5?"Up":tr<-5?"Down":"Flat",trPct:tr,
+      recB:band(b-last,RECB),freqB:band(in12.length,FRQB),relB:band(b-first,RELB)});
+  });
+  /* ABC by cumulative share of trailing-12-month sales: A to 80%, B to 95% */
+  const live=out.filter(o=>!o.none).sort((x,y)=>y.mon-x.mon);
+  const tot=live.reduce((s,o)=>s+o.mon,0)||1; let cum=0;
+  live.forEach(o=>{cum+=o.mon;const sh=cum/tot*100;o.abc=sh<=80?"A":sh<=95?"B":"C";o.share=o.mon/tot*100;});
+  out.filter(o=>o.none).forEach(o=>{o.abc="—";o.mon=0;o.share=0;o.rec=9999;o.freq=0;o.rel=0;
+    o.trend="—";o.recB="365+ d";o.freqB="1";o.relB="< 6 mo";});
+  /* the seven status bands. They overlap on purpose — these are bands, not a
+     partition, and a customer can be active, repeat, loyal and high volume. */
+  out.forEach(o=>{
+    o.acquired = o.rel<=365 && o.freq>0;
+    o.active   = o.rec<=90;
+    o.repeat   = o.freq>=2;
+    o.loyal    = o.rel>=540 && o.freq>=8 && o.rec<=90;
+    o.high     = o.abc==="A";
+    o.lost     = o.rec>365;
+    o.atRisk   = (!o.lost && o.rec>90) || (o.active && o.trend==="Down" && o.rec>45);
+    o.status   = o.lost?"Lost":o.atRisk?"At risk":o.acquired?"Acquired":o.loyal?"Loyal":o.active?"Active":"Dormant";
+  });
+  return out;
+}
+
+/* ─── 6. AGGREGATE ────────────────────────────────────────────────────────*/
 let G={};
 function agg(){
-  const L=rows(), yr=CUR_Y(), a=A(), el=dEl();
-  const acc=(f,filt)=>L.reduce((s,l)=>filt(l)?s+f(l)*wMonth(l.m):s,0);
-  const ytd=l=>inYTD(l.m,yr), ytdLY=l=>inYTD(l.m+12,yr), mtd=l=>l.m===a.mi, mtdLY=l=>l.m===a.mi-12;
-  const rawYTD=(f,filt)=>L.reduce((s,l)=>filt(l)?s+f(l):s,0);
-  G.revYTD=acc(l=>l.rev,ytd);  G.kgYTD=acc(l=>l.kg,ytd);
-  G.costYTD=acc(l=>l.cost,ytd);G.rebYTD=acc(l=>l.reb,ytd);
-  G.revYTD_LY=rawYTD(l=>l.rev,ytdLY)*1; /* full comparable window at the same point */
-  G.revYTD_LY=L.reduce((s,l)=>inYTD(l.m+12,yr)?s+l.rev*wMonth(l.m+12):s,0);
-  G.revMTD=acc(l=>l.rev,mtd);  G.kgMTD=acc(l=>l.kg,mtd);
-  G.revMTD_LY=L.reduce((s,l)=>mtdLY(l)?s+l.rev*a.frac:s,0);
+  const b=ANCH(), w=win(S.period,b), cw=cmpWin(S.period,b,S.cmp), pe=pEnd(S.period,b);
+  G.b=b; G.a=w[0]; G.z=w[1]; G.ca=cw[0]; G.cz=cw[1]; G.pe=pe;
+  G.cmpOK=cw[0]>=0;                       /* no fabricated comparison */
+  const ids=custIdSet();
+  const IV=INV.filter(v=>ids[v.cust]);
+  const LN=LINES.filter(l=>ids[l.cust]);
+  G.cur=bundle(IV,G.a,G.z);
+  G.prv=G.cmpOK?bundle(IV,G.ca,G.cz):null;
+  const d=(f)=>{if(!G.prv)return null;const x=f(G.cur),y=f(G.prv);return {x,y,abs:x-y,pct:y?(x/y-1)*100:null};};
+  G.d=d;
+
+  /* plan and pace */
   const R=repScope();
   G.quota=R.reduce((s,r)=>s+r.quota,0);
-  G.planYTD=G.quota*SEAS.slice(0,mOf(a.mi)).reduce((s,x)=>s+x,0)/12
-           +G.quota*SEAS[mOf(a.mi)]/12*a.frac;
-  G.planMTD=G.quota*SEAS[mOf(a.mi)]/12;
-  G.mgn=G.revYTD?(G.revYTD-G.costYTD+G.rebYTD)/G.revYTD*100:0;
-  G.mgnGross=G.revYTD?(G.revYTD-G.costYTD)/G.revYTD*100:0;
-  const lyRev=G.revYTD_LY||1;
-  G.mgnLY=(()=>{const r=L.filter(l=>inYTD(l.m+12,yr));const w=l=>wMonth(l.m+12);
-    const rv=r.reduce((s,l)=>s+l.rev*w(l),0),cs=r.reduce((s,l)=>s+l.cost*w(l),0),rb=r.reduce((s,l)=>s+l.reb*w(l),0);
-    return rv?(rv-cs+rb)/rv*100:0;})();
-  G.kgYTD_LY=L.reduce((s2,l)=>inYTD(l.m+12,yr)?s2+l.kg*wMonth(l.m+12):s2,0);
-  G.ppk=G.kgYTD?G.revYTD/G.kgYTD:0;
-  G.ppkLY=(()=>{const r=L.filter(l=>inYTD(l.m+12,yr));const w=l=>wMonth(l.m+12);
-    const rv=r.reduce((s,l)=>s+l.rev*w(l),0),k2=r.reduce((s,l)=>s+l.kg*w(l),0);return k2?rv/k2:0;})();
-  const O=openRows();
+  G.plan=G.quota*planWin(G.a,G.z);
+  G.planFull=G.quota*planWin(G.a,pe);
+  G.wdTotal=wdCount(G.a,pe); G.wdDone=wdCount(G.a,G.z); G.wdLeft=Math.max(0,G.wdTotal-G.wdDone);
+  G.paceExp=G.wdTotal?G.planFull*G.wdDone/G.wdTotal:0;
+  G.pace=G.paceExp?G.cur.tot/G.paceExp*100:null;
+
+  /* open book, point in time at the as-of date */
+  const O=OPEN.filter(o=>ids[o.cust]&&o.orderDay<=b&&o.shipDay>b
+    &&(S.so==="all"||(S.so==="blanket")===o.blanket));
   G.open=O.reduce((s,o)=>s+o.rev,0); G.openKg=O.reduce((s,o)=>s+o.kg,0); G.openLn=O.length;
-  const mo=O.filter(o=>o.shipIn<=(31-Math.round(a.frac*31)));
-  G.openMo=mo.reduce((s,o)=>s+o.rev,0);
-  G.ship7=O.filter(o=>o.shipIn<=7).sort((x,y)=>x.shipIn-y.shipIn);
-  /* rep-level, same arithmetic per rep so rows sum to the header */
+  G.openByPeriodEnd=isToDate(S.period)?O.filter(o=>o.shipDay<=pe).reduce((s,o)=>s+o.rev,0):null;
+  G.ship7=O.filter(o=>o.shipDay-b<=7).sort((x,y)=>x.shipDay-y.shipDay);
+  G.openAge=[["0–14 days",0],["15–30 days",0],["31–60 days",0],["61–90 days",0],["90+ days",0]];
+  O.forEach(o=>{const ag=b-o.orderDay;const i=ag<15?0:ag<31?1:ag<61?2:ag<91?3:4;G.openAge[i][1]+=o.rev;});
+
+  /* per seller — same window, same arithmetic, so rows sum to the header */
   G.reps=R.map(r=>{
-    const rl=L.filter(l=>l.rep===r.id);
-    const rv=rl.reduce((s,l)=>inYTD(l.m,yr)?s+l.rev*wMonth(l.m):s,0);
-    const cs=rl.reduce((s,l)=>inYTD(l.m,yr)?s+l.cost*wMonth(l.m):s,0);
-    const rb=rl.reduce((s,l)=>inYTD(l.m,yr)?s+l.reb*wMonth(l.m):s,0);
-    const plan=r.quota*(SEAS.slice(0,mOf(a.mi)).reduce((s,x)=>s+x,0)/12+SEAS[mOf(a.mi)]/12*a.frac);
-    const pp=PIPE.filter(p=>p.rep===r.id&&p.age>dEl()).reduce((s,p)=>s+p.amt,0);
-    const q=QUOTE.filter(x=>x.rep===r.id&&x.age-dEl()>20), qw=q.filter(x=>x.won).length;
-    const flag=CUST.filter(c=>c.rep===r.id).reduce((s,c)=>
-      s+c.classes.filter(cl=>cl.sinceLast-dEl()>cl.interval*1.5).length,0);
-    return {...r,rev:rv,plan,mgn:rv?(rv-cs+rb)/rv*100:0,att:plan?rv/plan*100:0,
-      cov:plan-rv>0?pp/(plan-rv):99,pipe:pp,qc:q.length?qw/q.length*100:0,flag};
+    const s={};CUST.forEach(c=>{if(c.rep===r.id&&catOK(c)&&c.co===coK())s[c.id]=1;});
+    const iv=INV.filter(v=>s[v.cust]);
+    const cur=bundle(iv,G.a,G.z), prv=G.cmpOK?bundle(iv,G.ca,G.cz):null;
+    const plan=r.quota*planWin(G.a,G.z);
+    const pp=PIPE.filter(p=>p.rep===r.id&&p.createDay<=b&&p.closeDay>b).reduce((t,p)=>t+p.amt,0);
+    const q=QUOTE.filter(x=>x.rep===r.id&&x.decideDay>=G.a&&x.decideDay<=G.z);
+    const flag=CUST.filter(c=>c.rep===r.id&&catOK(c)&&c.co===coK()).reduce((t,c)=>
+      t+c.classes.filter(cl=>{const ld=lastOn(cl,b);return ld>=0&&(b-ld)-cl.interval>cl.interval*0.5;}).length,0);
+    return {...r,cur,prv,plan,rev:cur.rev,tot:cur.tot,mgn:cur.mgnP,otif:cur.otif,
+      att:plan?cur.tot/plan*100:0,cov:plan-cur.tot>0?pp/(plan-cur.tot):99,pipe:pp,
+      qc:q.length?q.filter(x=>x.won).length/q.length*100:0,qn:q.length,flag};
   });
   G.repsAt=G.reps.filter(r=>r.att>=100).length; G.repsN=G.reps.length;
-  /* company-wide margin, ignoring the rep filter, for peer comparison */
-  const CL=LINES.filter(l=>l.co===coK()&&inYTD(l.m,yr));
-  const crv=CL.reduce((s,l)=>s+l.rev*wMonth(l.m),0)||1;
-  G.coMgn=(crv-CL.reduce((s,l)=>s+l.cost*wMonth(l.m),0)+CL.reduce((s,l)=>s+l.reb*wMonth(l.m),0))/crv*100;
-  /* by class and by customer — both reconcile to G.revYTD */
-  const byC={},byK={};
-  L.forEach(l=>{if(!inYTD(l.m,yr))return;const w=wMonth(l.m);
-    byC[l.ci]=(byC[l.ci]||0)+l.rev*w; byK[l.cust]=(byK[l.cust]||0)+l.rev*w;});
-  G.byClass=CLSN.map((n,i)=>[n,byC[i]||0]).filter(x=>x[1]>0).sort((a2,b)=>b[1]-a2[1]);
-  /* revenue-weighted maintained target across the classes actually sold */
-  const tRev=Object.keys(byC).reduce((s2,k)=>s2+byC[k],0)||1;
-  G.mgnTarget=Object.keys(byC).reduce((s2,k)=>s2+byC[k]*CLS_TGT[k],0)/tRev;
-  G.byCust=custList().map(c=>({...c,rev:byK[c.id]||0})).sort((a2,b)=>b.rev-a2.rev);
-  const tot=G.byCust.reduce((s,c)=>s+c.rev,0)||1;
-  G.top5=G.byCust.slice(0,5).reduce((s,c)=>s+c.rev,0)/tot*100;
-  G.topN=Math.min(5,G.byCust.length);
-  /* A/R is a balance, so derive it from trailing-12-month revenue at the
-     as-of point rather than storing a fixed number. Days-to-pay drifts back
-     toward its prior-window value as the as-of date moves earlier. */
+
+  /* company margin, ignoring the seller filter, for the peer comparison */
+  const CO=INV.filter(v=>v.co===coK());
+  G.coB=bundle(CO,G.a,G.z);
+
+  /* by product class (product sales only) and by customer */
+  const byC={},byK={},byKo={};
+  const byKc={},byCat={};
+  LN.forEach(l=>{if(l.d<G.a||l.d>G.z)return;
+    const o=byC[l.ci]||(byC[l.ci]={rev:0,cRev:0,cost:0,reb:0,kg:0});
+    o.rev+=l.rev;o.cRev+=l.cRev;o.cost+=l.cost;o.reb+=l.reb;o.kg+=l.kg;
+    byKc[l.cust]=(byKc[l.cust]||0)+l.cRev;
+    const q=byCat[l.cat]||(byCat[l.cat]={rev:0,cRev:0,kg:0});
+    q.rev+=l.rev;q.cRev+=l.cRev;q.kg+=l.kg;});
+  IV.forEach(v=>{if(v.d<G.a||v.d>G.z)return;
+    byK[v.cust]=(byK[v.cust]||0)+v.rev; byKo[v.cust]=(byKo[v.cust]||0)+v.oth;});
+  G.clsRows=Object.keys(byC).map(k=>({k:+k,n:CLSN[k],...byC[k],
+    mgn:byC[k].rev?(byC[k].rev-byC[k].cost+byC[k].reb)/byC[k].rev*100:0,
+    ppk:byC[k].kg?byC[k].rev/byC[k].kg:0,cppk:byC[k].kg?byC[k].cRev/byC[k].kg:0,
+    pidx:byC[k].cRev?byC[k].rev/byC[k].cRev*100:0, leak:byC[k].cRev-byC[k].rev,
+    tgt:CLS_TGT[k]})).sort((x,y)=>y.rev-x.rev);
+  G.byCat=CATS.filter(c=>byCat[c]).map(c=>({cat:c,...byCat[c],
+    pidx:byCat[c].cRev?byCat[c].rev/byCat[c].cRev*100:0})).sort((x,y)=>y.rev-x.rev);
+  G.byClass=G.clsRows.map(r=>[r.n,r.rev]);
+  const tRev=G.clsRows.reduce((s,r)=>s+r.rev,0)||1;
+  G.mgnTarget=G.clsRows.reduce((s,r)=>s+r.rev*r.tgt,0)/tRev;
+  G.byCust=custList().map(c=>({...c,rev:byK[c.id]||0,oth:byKo[c.id]||0,cRev:byKc[c.id]||0,
+    pidx:byKc[c.id]?(byK[c.id]||0)/byKc[c.id]*100:null,
+    leak:(byKc[c.id]||0)-(byK[c.id]||0)})).sort((x,y)=>y.rev-x.rev);
+  const ct=G.byCust.reduce((s,c)=>s+c.rev,0)||1;
+  G.topN=Math.min(5,G.byCust.filter(c=>c.rev>0).length);
+  G.top5=G.byCust.slice(0,G.topN).reduce((s,c)=>s+c.rev,0)/ct*100;
+
+  /* A/R is a balance: derive it at the as-of date from trailing-365 sales */
   G.ar={};
   CUST.filter(c=>c.co===coK()).forEach(c=>{
-    const cl2=LINES.filter(l=>l.cust===c.id);
-    const t12=cl2.reduce((s2,l)=>{const d=a.mi-l.m;return (d>=0&&d<12)?s2+l.rev*(d===0?a.frac:1):s2;},0);
-    const dtp=c.dtpP+(c.dtp-c.dtpP)*Math.max(0,1-el/240);
-    const bal=t12/365*dtp;
-    G.ar[c.id]={bal,dtp,past:dtp>45?bal*(0.16+(dtp-45)/300):0,t12};
+    const t=INV.reduce((s,v)=>v.cust===c.id&&v.d>b-365&&v.d<=b?s+v.rev+v.oth:s,0);
+    const dtp=c.dtpP+(c.dtp-c.dtpP)*Math.max(0,1-(TODAY-b)/240);
+    const bal=t/365*dtp;
+    /* DSO = A/R balance / trailing-365 sales x 365, at the as-of date. */
+    const pt=INV.reduce((s2,v)=>v.cust===c.id&&v.d>b-455&&v.d<=b-90?s2+v.rev+v.oth:s2,0);
+    const pbal=pt/365*c.dtpP;
+    G.ar[c.id]={bal,dtp,past:dtp>45?bal*(0.16+(dtp-45)/300):0,t12:t,
+      dso:t?bal/t*365:0, dsoPrior:pt?pbal/pt*365:0};
   });
-  G.atRisk=custList().filter(c=>c.classes.some(cl=>cl.sinceLast-dEl()>cl.interval*1.5));
-  G.atRiskRev=G.atRisk.reduce((s,c)=>s+(byK[c.id]||0),0);
-  /* trend series, truncated at the as-of month */
-  G.trend=[];
-  for(let m=0;m<=a.mi;m++){
-    const ml=L.filter(l=>l.m===m);const rv=ml.reduce((s,l)=>s+l.rev,0);
-    if(!rv)continue;
-    const cs=ml.reduce((s,l)=>s+l.cost,0),rb=ml.reduce((s,l)=>s+l.reb,0),k2=ml.reduce((s,l)=>s+l.kg,0);
-    G.trend.push({m,label:mLbl(m),mgn:(rv-cs+rb)/rv*100,ppk:rv/k2});
+
+  /* reorder decay — the ERP cadence mechanism, distinct from the RFM band */
+  G.decay=[];
+  custList().forEach(c=>c.classes.forEach(cl=>{
+    const ld=lastOn(cl,b); if(ld<0)return;
+    const since=b-ld, over=since-cl.interval;
+    if(over>cl.interval*0.5)G.decay.push({c,cl,since,over:Math.round(over)});}));
+  G.decay.sort((x,y)=>y.over-x.over);
+  G.decayCust=[]; {const seen={};G.decay.forEach(o=>{if(!seen[o.c.id]){seen[o.c.id]=1;G.decayCust.push(o.c);}});}
+  G.decayRev=G.decayCust.reduce((s,c)=>s+(byK[c.id]||0)+(byKo[c.id]||0),0);
+
+  /* trend, last 24 months up to the as-of month, product margin and ASP */
+  G.trend=[]; const m1=mi(b), m0=Math.max(0,m1-23);
+  for(let m=m0;m<=m1;m++){
+    const mset=IV.filter(v=>v.m===m&&v.d<=b);
+    if(!mset.length)continue;
+    const bb=bundle(mset,-1e9,1e9);
+    G.trend.push({m,label:mLbl(m),mgn:bb.mgnP,mgnT:bb.mgnT,asp:bb.asp,tot:bb.tot});
   }
-  /* An opportunity younger than the elapsed gap did not exist at the as-of
-     date; survivors are aged back, and their stage rolled back one step per
-     ~45 days, so the funnel genuinely reflects that point in time. */
-  const PP=PIPE.filter(p=>p.co===coK()&&(S.rep==="all"||p.rep===S.rep)&&p.age>el)
-    .map(p=>({...p,age:p.age-el,stage:Math.max(0,p.stage-Math.floor(el/45))}));
-  G.pipeStage=STAGE.map((s2,i)=>{const g=PP.filter(p=>p.stage===i);
-    return [s2,g.reduce((a3,p)=>a3+p.amt,0),g.length?Math.round(g.reduce((a3,p)=>a3+p.age,0)/g.length):0];});
-  G.pipeTot=PP.reduce((s2,p)=>s2+p.amt,0);
-  G.repPipe={}; PP.forEach(p=>{G.repPipe[p.rep]=(G.repPipe[p.rep]||0)+p.amt;});
-  G.cov=G.planYTD-G.revYTD>0?G.pipeTot/(G.planYTD-G.revYTD):null;
-  const Q=QUOTE.filter(q=>q.co===coK()&&(S.rep==="all"||q.rep===S.rep)&&q.age>el)
-    .map(q=>({...q,age:q.age-el}));
-  const Qres=Q.filter(q=>q.age>20);            /* resolved by the as-of date */
-  G.qconv=Qres.length?Qres.filter(q=>q.won).length/Qres.length*100:0;
-  G.qN=Qres.length;
+
+  /* pipeline and quotes at the as-of date; conversion within the window */
+  const PP=PIPE.filter(p=>ids[p.cust]&&p.createDay<=b&&p.closeDay>b)
+    .map(p=>({...p,age:b-p.createDay,
+      stage:Math.max(0,Math.min(p.tgt,Math.floor((b-p.createDay)/p.life*5)))}));
+  G.pipeStage=STAGE.map((s,i)=>{const g=PP.filter(p=>p.stage===i);
+    return [s,g.reduce((t,p)=>t+p.amt,0),g.length?Math.round(g.reduce((t,p)=>t+p.age,0)/g.length):0];});
+  G.pipeTot=PP.reduce((s,p)=>s+p.amt,0);
+  G.repPipe={};PP.forEach(p=>{G.repPipe[p.rep]=(G.repPipe[p.rep]||0)+p.amt;});
+  G.newPipe=PIPE.filter(p=>ids[p.cust]&&p.createDay>=G.a&&p.createDay<=G.z)
+    .reduce((s,p)=>s+p.amt,0);
+  G.cov=G.plan-G.cur.tot>0?G.pipeTot/(G.plan-G.cur.tot):null;
+  const QR=QUOTE.filter(q=>ids[q.cust]&&q.decideDay>=G.a&&q.decideDay<=G.z);
+  G.qconv=QR.length?QR.filter(q=>q.won).length/QR.length*100:0;
+  G.qN=QR.length;
+  G.qres=QR;
+  /* Win/loss by product class and by customer category. The denominator
+     travels with the rate, and a rate on fewer than 10 decided quotes is
+     suppressed rather than shown. */
+  const wl=(keyf,names)=>{const m={};
+    QR.forEach(q=>{const k=keyf(q);const o=m[k]||(m[k]={n:0,w:0,amt:0,wamt:0});
+      o.n++;o.amt+=q.amt;if(q.won){o.w++;o.wamt+=q.amt;}});
+    return names.filter(x=>m[x[0]]).map(x=>({k:x[1],...m[x[0]],
+      rate:m[x[0]].n?m[x[0]].w/m[x[0]].n*100:0}));};
+  G.wlClass=wl(q=>q.ci,CLSN.map((n,i)=>[i,n])).sort((a2,b2)=>b2.n-a2.n);
+  G.wlCat=wl(q=>q.cat,CATS.map(c=>[c,c]));
+  const QO=QUOTE.filter(q=>ids[q.cust]&&q.createDay<=b&&q.decideDay>b);
   G.qAge=[["0–14 days",0],["15–30 days",0],["31–60 days",0],["61–90 days",0],["90+ days",0]];
-  Q.filter(q=>!q.won).forEach(q=>{const i=q.age<15?0:q.age<31?1:q.age<61?2:q.age<91?3:4;G.qAge[i][1]+=q.amt;});
+  QO.forEach(q=>{const ag=b-q.createDay;const i=ag<15?0:ag<31?1:ag<61?2:ag<91?3:4;G.qAge[i][1]+=q.amt;});
+  G.qOpen=QO.reduce((s,q)=>s+q.amt,0);
+  G.qOpenRows=QO;
+
+  G.seg=segments();
+  G.segCount=k=>G.seg.filter(o=>o[k]).length;
 }
+const lastOn=(cl,b)=>{let x=-1;for(let i=0;i<cl.days.length;i++){if(cl.days[i]<=b)x=cl.days[i];else break;}return x;};
 
 /* ══════════════════════════════════════════════════════════════════════════
    VISUALS — every form maps to a native QuickSight visual type.
-   Text never goes below font/size/body/xs (12px), the GDS floor.
+   KPI · Horizontal bar · Stacked bar · Line · Funnel · Gauge · Waterfall ·
+   Table. Text never goes below font/size/body/xs (12px), the GDS floor.
    ══════════════════════════════════════════════════════════════════════════ */
 const NS="http://www.w3.org/2000/svg", FS=12;
 const e=(t,a)=>{const x=document.createElementNS(NS,t);for(const k in a)x.setAttribute(k,a[k]);return x;};
@@ -522,13 +866,14 @@ const ICON={
  handshake:"M11 5 8 8l3 3 2-2 2 2 3-3-3-3-2 2zM4 12l4 4 3-3-4-4zm12 1 4-4-3-3-4 4z",
  palette:"M12 3a9 9 0 100 18c1 0 2-1 2-2s-1-2-2-2h-1a2 2 0 010-4h5a4 4 0 004-4 6 6 0 00-8-6zM7 8a1.5 1.5 0 110 3 1.5 1.5 0 010-3z",
  help:"M12 2a10 10 0 100 20 10 10 0 000-20zm1 15h-2v-2h2zm1.5-6-1 1v2h-1v-2.5l1.5-1.5a1.5 1.5 0 10-2.5-1h-2a3.5 3.5 0 117 0c0 .8-.4 1.5-1 2z",
- settings:"M12 8a4 4 0 100 8 4 4 0 000-8zm9 4-2-1 1-2-2-2-2 1-1-2h-3l-1 2-2-1-2 2 1 2-2 1v3l2 1-1 2 2 2 2-1 1 2h3l1-2 2 1 2-2-1-2 2-1z"};
+ settings:"M12 8a4 4 0 100 8 4 4 0 000-8zm9 4-2-1 1-2-2-2-2 1-1-2h-3l-1 2-2-1-2 2 1 2-2 1v3l2 1-1 2 2 2 2-1 1 2h3l1-2 2 1 2-2-1-2 2-1z",
+ clock:"M12 2a10 10 0 100 20 10 10 0 000-20zm1 11h-4v-2h2V7h2z",
+ truck:"M3 6h11v8H3zm12 3h3l3 3v2h-6zM6 17a2 2 0 104 0 2 2 0 00-4 0zm10 0a2 2 0 104 0 2 2 0 00-4 0z"};
 const svgIcon=k=>`<svg viewBox="0 0 24 24" aria-hidden="true"><path d="${ICON[k]}"/></svg>`;
 const BADGE={ok:["var(--fb-success)","var(--text-c-success)"],warn:["var(--fb-warning)","var(--text-c-warning)"],
  err:["var(--fb-error)","var(--text-c-error)"],pri:["var(--primary-high1)","var(--text-c-primary)"]};
 function KPI(o){
   const c=h("div","kpi");
-  /* a delta that rounds to zero reads neutral, so the badge must agree with it */
   const isFlat=o.cmp!=null&&/^[+-]?0\.0+/.test(String(o.cmp));
   if(o.badge===undefined)o.badge=(o.dir===undefined||o.dir===0||isFlat)?"pri":o.dir>0?"ok":"err";
   if(o.badge){const b=h("div","kpi-badge"),[bg,fg]=BADGE[o.badge]||BADGE.pri;
@@ -551,16 +896,29 @@ function KPI(o){
     bd.appendChild(h("div","kpi-s",P(o.prog,1)+" "+(o.progL||"of target")));}
   c.appendChild(bd);return c;
 }
+/* a KPI whose comparison comes from the comparison parameter, and which says
+   so rather than inventing a delta when the history is not there */
+function KPIc(label,f,fmt,o){
+  o=o||{};const cur=f(G.cur);
+  const k={label,value:fmt(cur),sub:o.sub,prog:o.prog,progL:o.progL,icon:o.icon};
+  if(G.prv){
+    const p=f(G.prv), pct=o.pp?null:(p?(cur/p-1)*100:null);
+    k.cmp=o.pp?SP(cur-p)+"pp":(pct==null?"n/a":SP(pct)+"%");
+    k.dir=cur>=p?1:-1;
+    k.cmpL=CMPLBL();
+  }else{k.cmp="no comparable history";k.dir=0;}
+  return KPI(k);
+}
+const CMPLBL=()=>S.cmp==="ly"?"vs. last year":"vs. prior period";
 function card(t,s){const c=h("div","card"),hd=h("div","card-hd");
   hd.appendChild(h("span","card-t",t));if(s)hd.appendChild(h("span","card-s",s));
   c.appendChild(hd);return c;}
-const body=c=>{const b=h("div","card-bd");c.appendChild(b);return b;};
 const legend=items=>{const l=h("div","legend");
   items.forEach(([c,t,ln])=>l.appendChild(h("span",null,`<i class="sw ${ln?"swl":""}" style="background:${c}"></i>${t}`)));
   return l;};
 const chip=(k,t)=>`<span class="chip ${k}">${t}</span>`;
-const foot=(s,t)=>h("div","card-foot",`Showing 1–${s} of ${t}`);
 const row=c=>h("div","grid "+c);
+const rule=t=>h("div","rule",t);
 function tbl(cols,data){
   const w=h("div","tw"),t=document.createElement("table");
   const th=document.createElement("thead"),tr=document.createElement("tr");
@@ -578,19 +936,34 @@ function tbl(cols,data){
     tb.appendChild(x);});
   t.appendChild(tb);w.appendChild(t);return w;
 }
-function barH(data,o){
-  o=o||{};const fmt=o.fmt||M,lw=o.lw||160,pr=o.pr||80,W=780,rh=o.rh||26;
+function barH_(data,o,W){
+  o=o||{};const fmt=o.fmt||M,lw=o.lw||160,pr=o.pr||80,rh=o.rh||26;
+  if(!data.length)return h("div","rule","Nothing in this window under the current filters.");
   const H=data.length*rh+(o.ref!=null?20:6);
-  const max=Math.max(...data.map(d=>d[1]),o.ref||0)*1.04||1;
+  const vals=data.map(d=>d[1]);
+  let lo=Math.min(0,...vals), hi=Math.max(0,...vals);
+  if(o.ref!=null){lo=Math.min(lo,o.ref);hi=Math.max(hi,o.ref);}
+  const span=(hi-lo)||1; hi+=span*0.04; lo-=lo<0?span*0.04:0;
   const s=e("svg",{class:"chart",viewBox:`0 0 ${W} ${H}`,width:"100%",height:H,role:"img","aria-label":o.aria||"bar chart"});
-  const X=v=>lw+(v/max)*(W-lw-pr);
-  data.forEach((d,i)=>{const y=i*rh+3,bh=rh-9;
+  const X=v=>lw+((v-lo)/(hi-lo))*(W-lw-pr);
+  const x0=X(0), neg=lo<0;
+  if(neg)s.appendChild(e("line",{x1:x0,y1:0,x2:x0,y2:H-(o.ref!=null?15:2),
+    stroke:"var(--border-medium)","stroke-width":1}));
+  data.forEach((d,i)=>{const y=i*rh+3,bh=rh-9,x1=X(d[1]);
     const t=e("text",{x:lw-8,y:y+bh-2,"text-anchor":"end","font-size":FS,fill:"var(--text-secondary)"});
     t.textContent=d[0];s.appendChild(t);
-    const w=Math.max(X(d[1])-lw,1);
-    const r=e("rect",{x:lw,y,width:w,height:bh,fill:d[3]||o.color||"var(--cat-1)"});
+    const bx=Math.min(x0,x1), w=Math.max(Math.abs(x1-x0),1);
+    const col=d[3]||o.color||(neg?(d[1]>=0?"var(--fb-success)":"var(--fb-error)"):"var(--cat-1)");
+    const r=e("rect",{x:bx,y,width:w,height:bh,fill:col});
     bind(r,`<b>${d[0]}</b><br>${fmt(d[1])}${d[2]?"<br>"+d[2]:""}`);s.appendChild(r);
-    const v=e("text",{x:lw+w+7,y:y+bh-2,"font-size":FS,fill:"var(--text-primary)"});
+    /* A negative bar grows leftward toward the category labels, so its value
+       sits INSIDE the bar rather than beyond its end — otherwise the longest
+       bars print their value on top of the category name. */
+    let tx,anc,tf;
+    if(d[1]>=0){tx=x1+7;anc="start";tf="var(--text-primary)";}
+    else if(x0-x1>=48){tx=x1+7;anc="start";tf=d[3]?"var(--text-primary)":"var(--text-c-error)";}
+    else {tx=x1-7;anc="end";tf="var(--text-primary)";}
+    const v=e("text",{x:tx,y:y+bh-2,"font-size":FS,"text-anchor":anc,fill:tf});
     v.textContent=fmt(d[1]);s.appendChild(v);});
   if(o.ref!=null){const x=X(o.ref);
     s.appendChild(e("line",{x1:x,y1:0,x2:x,y2:H-15,stroke:"var(--text-primary)","stroke-width":1.5,"stroke-dasharray":"4 3"}));
@@ -598,28 +971,28 @@ function barH(data,o){
     l.textContent=o.refLabel||"target";s.appendChild(l);}
   return s;
 }
-function barStack(segs,o){
-  o=o||{};const W=780,H=66,bh=26,y=18,pr=o.pr||120;
+function barStack_(segs,o,W){
+  o=o||{};const H=78,bh=26,y=28,pr=o.pr||120;
   const tot=segs.reduce((a,x)=>a+x[1],0),max=Math.max(tot,o.ref||0)*1.04||1;
   const s=e("svg",{class:"chart",viewBox:`0 0 ${W} ${H}`,width:"100%",height:H,role:"img","aria-label":o.aria||"stacked bar"});
   let x=0;
   segs.forEach(([n,v,col])=>{const w=(v/max)*(W-pr);if(w<=0)return;
     const r=e("rect",{x,y,width:Math.max(w,1),height:bh,fill:col});
-    bind(r,`<b>${n}</b><br>${M(v)}`);s.appendChild(r);x+=w;});
+    bind(r,`<b>${n}</b><br>${(o.fmt||M)(v)}`);s.appendChild(r);x+=w;});
   if(o.ref!=null){const rx=(o.ref/max)*(W-pr);
     s.appendChild(e("line",{x1:rx,y1:y-10,x2:rx,y2:y+bh+8,stroke:"var(--text-primary)","stroke-width":1.5,"stroke-dasharray":"4 3"}));
-    const t=e("text",{x:rx,y:y-14,"text-anchor":"middle","font-size":FS,fill:"var(--text-primary)"});
+    const t=e("text",{x:rx,y:y-15,"text-anchor":"middle","font-size":FS,fill:"var(--text-primary)"});
     t.textContent=(o.refLabel||"Plan")+" "+M(o.ref);s.appendChild(t);}
   const tv=e("text",{x:W-pr+10,y:y+bh-9,"font-size":FS+2,fill:"var(--text-primary)"});
-  tv.textContent=M(tot);s.appendChild(tv);
+  tv.textContent=(o.fmt||M)(tot);s.appendChild(tv);
   if(o.ref){const p=e("text",{x:W-pr+10,y:y+bh+8,"font-size":FS,fill:"var(--text-tertiary)"});
     p.textContent=P(tot/o.ref*100,1)+" of plan";s.appendChild(p);}
   return s;
 }
-function line(series,o){
-  o=o||{};const W=780,H=o.H||208,mL=10,mR=78,mT=18,mB=28,fmt=o.fmt||(v=>P(v));
+function line_(series,o,W){
+  o=o||{};const H=o.H||208,mL=10,mR=78,mT=18,mB=28,fmt=o.fmt||(v=>P(v));
   const n=series[0].d.length;
-  if(n<2)return h("div","card-s","Not enough periods at this as-of date.");
+  if(n<2)return h("div","rule","Not enough periods at this as-of date to draw a trend.");
   const all=series.flatMap(x=>x.d).concat(o.ref!=null?[o.ref]:[]);
   let lo=Math.min(...all),hi=Math.max(...all);const pd=(hi-lo)*0.22||1;lo-=pd;hi+=pd;
   const X=i=>mL+(i/(n-1))*(W-mL-mR),Y=v=>mT+(1-(v-lo)/(hi-lo))*(H-mT-mB);
@@ -654,8 +1027,8 @@ function line(series,o){
   hit.addEventListener("mouseleave",()=>{tip.style.opacity=0;cr.setAttribute("opacity",0);});
   s.appendChild(hit);return s;
 }
-function funnel(d){
-  const W=780,rh=34,lw=140,pr=132,H=d.length*rh+6;
+function funnel_(d,W){
+  const rh=34,lw=140,pr=132,H=d.length*rh+6;
   const max=Math.max(...d.map(x=>x[1]))||1;
   const ramp=["var(--ord-1)","var(--ord-2)","var(--ord-3)","var(--ord-4)","var(--ord-4)"];
   const s=e("svg",{class:"chart",viewBox:`0 0 ${W} ${H}`,width:"100%",height:H,role:"img","aria-label":"pipeline funnel"});
@@ -671,8 +1044,8 @@ function funnel(d){
     a.textContent=x[2]+"d mean age";s.appendChild(a);});
   return s;
 }
-function gauge(val,max,o){
-  o=o||{};const W=780,H=136,cx=120,cy=108,R=86,th=20;
+function gauge_(val,max,o,W){
+  o=o||{};const H=136,cx=120,cy=108,R=86,th=20;
   const f=Math.max(0,Math.min(val/max,1));
   const arc=(fr,col,wid)=>{const a0=Math.PI,a1=Math.PI*(1-fr);
     return e("path",{d:`M${cx+R*Math.cos(a0)},${cy+R*Math.sin(a0)} A${R},${R} 0 0 1 ${cx+R*Math.cos(a1)},${cy+R*Math.sin(a1)}`,
@@ -690,167 +1063,440 @@ function gauge(val,max,o){
     const v=e("text",{x:260,y:y+18,"font-size":FS+2,fill:nt[2]||"var(--text-primary)"});v.textContent=nt[1];s.appendChild(v);});
   return s;
 }
-/* Filter toolbar: per the Table spec, filters and active-filter chips live
-   inside a card. Company and Currency stay in the Header per app-header. */
-function toolbar(){
-  const c=h("div","card"),t=h("div","card-toolbar");
-  const mk=(lbl,id,opts,val,fn)=>{
-    const w=h("div","fld");w.appendChild(h("label",null,lbl));
-    const s=document.createElement("select");s.id=id;
-    opts.forEach(([v,x])=>{const o=document.createElement("option");o.value=v;o.textContent=x;
-      if(v===val)o.selected=true;s.appendChild(o);});
-    s.addEventListener("change",ev=>fn(ev.target.value));w.appendChild(s);t.appendChild(w);};
-  mk("Relative date (as-of)","fDate",[["today","Today"],["yesterday","Yesterday"],["lastworkday","Last workday"],
-    ["lastmonth","Last month"],["lastquarter","Last quarter"],["lastyear","Last year"]],S.asof,v=>{S.asof=v;draw();});
-  mk("Salesperson","fRep",[["all","All"]].concat(repList().map(r=>[r.id,r.n])),S.rep,v=>{S.rep=v;draw();});
-  const w=h("div","fld");w.appendChild(h("label",null,"SO type"));
-  const set=h("div","chip-set");
-  [["all","All"],["order","Order"],["blanket","Blanket"]].forEach(([v,x])=>{
-    const b=h("button","chip"+(S.so===v?" pri":""),x);
-    b.addEventListener("click",()=>{S.so=v;draw();});set.appendChild(b);});
-  w.appendChild(set);t.appendChild(w);
-  t.appendChild(h("div","sp"));
-  const act=[];
-  if(S.rep!=="all")act.push(chip("","Seller: "+(REPS.find(r=>r.id===S.rep)||{}).n));
-  if(S.so!=="all")act.push(chip("","SO type: "+S.so));
-  if(S.asof!=="today")act.push(chip("","As of "+A().label));
-  if(act.length)t.appendChild(h("div",null,act.join(" ")));
-  c.appendChild(t);return c;
+/* WATERFALL — QuickSight native. Contribution to the change in one measure,
+   bar by bar, closing on a total. */
+function waterfall_(items,o,W){
+  o=o||{};const fmt=o.fmt||M;
+  if(!items.length)return h("div","rule",o.empty||"No contributors in this window.");
+  const H=196,mT=24,mB=42,pad=8;
+  const n=items.length+1, cw=(W-pad*2)/n, bw=Math.min(64,cw*0.62);
+  let run=0;const steps=items.map(it=>{const a=run;run+=it[1];return {n:it[0],v:it[1],a,b:run};});
+  const tot=run;
+  const vals=steps.flatMap(s=>[s.a,s.b]).concat([0,tot]);
+  let lo=Math.min(...vals),hi=Math.max(...vals);const sp=(hi-lo)||1;lo-=sp*0.12;hi+=sp*0.12;
+  const Y=v=>mT+(1-(v-lo)/(hi-lo))*(H-mT-mB);
+  const s=e("svg",{class:"chart",viewBox:`0 0 ${W} ${H}`,width:"100%",height:H,role:"img","aria-label":o.aria||"waterfall"});
+  s.appendChild(e("line",{x1:pad,y1:Y(0),x2:W-pad,y2:Y(0),stroke:"var(--border-medium)","stroke-width":1}));
+  steps.forEach((st,i)=>{
+    const cx=pad+cw*i+cw/2, y0=Y(st.a), y1=Y(st.b);
+    const y=Math.min(y0,y1), hh=Math.max(Math.abs(y1-y0),2);
+    const col=st.v>=0?"var(--fb-success)":"var(--fb-error)";
+    const r=e("rect",{x:cx-bw/2,y,width:bw,height:hh,fill:col});
+    bind(r,`<b>${st.n}</b><br>${SP(st.v/1000,0)}K change<br>running ${fmt(st.b)}`);s.appendChild(r);
+    const lv=e("text",{x:cx,y:y-5,"text-anchor":"middle","font-size":FS,fill:"var(--text-primary)"});
+    lv.textContent=(st.v>=0?"+":"")+fmt(Math.abs(st.v)).replace(/^[^\d-]*/,m=>m);
+    lv.textContent=(st.v>=0?"+":"−")+fmt(Math.abs(st.v));
+    s.appendChild(lv);
+    if(i<steps.length-1)s.appendChild(e("line",{x1:cx+bw/2,y1:y1,x2:pad+cw*(i+1)+cw/2-bw/2,y2:y1,
+      stroke:"var(--border-medium)","stroke-width":1,"stroke-dasharray":"2 2"}));
+    const lb=e("text",{x:cx,y:H-24,"text-anchor":"middle","font-size":FS,fill:"var(--text-tertiary)"});
+    lb.textContent=st.n.length>13?st.n.slice(0,12)+"…":st.n;s.appendChild(lb);});
+  const cx=pad+cw*steps.length+cw/2;
+  const y0=Y(0),y1=Y(tot),y=Math.min(y0,y1),hh=Math.max(Math.abs(y1-y0),2);
+  const r=e("rect",{x:cx-bw/2,y,width:bw,height:hh,fill:"var(--cat-1)"});
+  bind(r,`<b>Total</b><br>${fmt(tot)}`);s.appendChild(r);
+  const tv=e("text",{x:cx,y:y-5,"text-anchor":"middle","font-size":FS,fill:"var(--text-primary)"});
+  tv.textContent=(tot>=0?"+":"−")+fmt(Math.abs(tot));s.appendChild(tv);
+  const tl=e("text",{x:cx,y:H-24,"text-anchor":"middle","font-size":FS,fill:"var(--text-secondary)"});
+  tl.textContent="Total";s.appendChild(tl);
+  return s;
 }
+/* Charts are built at the measured pixel width of their slot rather than a
+   fixed viewBox, so a card fills its column instead of centring a 780-unit
+   drawing inside it, and 12px label text stays 12px at every breakpoint. */
+const PEND=[];
+function chartSlot(fn){const d=h("div","cslot");PEND.push([d,fn]);return d;}
+function flushCharts(){
+  PEND.forEach(([d,fn])=>{
+    const cs=getComputedStyle(d);
+    let w=d.clientWidth-parseFloat(cs.paddingLeft||0)-parseFloat(cs.paddingRight||0);
+    if(!(w>0))w=760;
+    const node=fn(Math.max(340,Math.round(w)));
+    d.innerHTML="";if(node)d.appendChild(node);});
+  PEND.length=0;
+}
+const barH=(data,o)=>chartSlot(W=>barH_(data,o,W));
+const barStack=(segs,o)=>chartSlot(W=>barStack_(segs,o,W));
+const line=(series,o)=>chartSlot(W=>line_(series,o,W));
+const funnel=d=>chartSlot(W=>funnel_(d,W));
+const gauge=(v,m,o)=>chartSlot(W=>gauge_(v,m,o,W));
+const waterfall=(items,o)=>chartSlot(W=>waterfall_(items,o,W));
+
+/* ─── TOOLBAR: the four parameters plus the dimension filters ──────────── */
+function fld(lbl,node,grow){const w=h("div","fld");
+  if(grow)w.style.flex=grow+" 1 0";
+  w.appendChild(h("label",null,lbl));w.appendChild(node);return w;}
+function sel(id,opts,val,fn){
+  const s=document.createElement("select");s.id=id;
+  opts.forEach(([v,x])=>{const o=document.createElement("option");o.value=v;o.textContent=x;
+    if(v===val)o.selected=true;s.appendChild(o);});
+  s.addEventListener("change",ev=>fn(ev.target.value));return s;
+}
+function toolbar(){
+  /* Five parameters, five GDS Select controls. QuickSight offers exactly eight
+     parameter-control display types — Text field, Text field multiline,
+     Dropdown, Dropdown multiselect, List, List multiselect, Slider,
+     Date-picker — and NO button-group, segmented or tab-style control. The
+     button rows used by the production suite this borrows from therefore
+     cannot be reproduced; a single-select Dropdown is the native substitute,
+     and it is also the one input whose GDS Select styling is already in use in
+     the Header. Controls are free-form placeable and can be pinned to the top
+     of a sheet, so a horizontal row of them is legitimate. */
+  const c=h("div","card"),t=h("div","card-toolbar");
+  t.appendChild(fld("As-of date",sel("fDate",RELDATE,S.asof,v=>{S.asof=v;draw();}),1.6));
+  t.appendChild(fld("Period",sel("fPer",PERIODS.map(p=>[p[0],p[2]]),S.period,v=>{S.period=v;draw();}),2.1));
+  t.appendChild(fld("Comparison",sel("fCmp",CMPS,S.cmp,v=>{S.cmp=v;draw();}),1.6));
+  t.appendChild(fld("Salesperson",sel("fRep",[["all","All salespeople"]].concat(repList().map(r=>[r.id,r.n])),S.rep,v=>{S.rep=v;draw();}),1.6));
+  t.appendChild(fld("Customer category",sel("fCat",[["all","All categories"]].concat(CATS.map(x=>[x,x])),S.cat,v=>{S.cat=v;draw();}),1.6));
+  t.appendChild(fld("Order type",sel("fSo",[["all","All order types"],["order","Discrete orders only"],["blanket","Blanket orders only"]],S.so,v=>{S.so=v;draw();}),1.6));
+  c.appendChild(t);
+  /* The window summary is a custom-narrative Insight visual: its expression
+     editor can insert parameters, computations, functions and inline IF, so
+     the active-parameter state belongs here rather than in a chip row, which
+     QuickSight has no equivalent for. */
+  const parts=[
+    `Window <b>${fmtDay(G.a)}</b> to <b>${fmtDay(G.z)}</b> · ${PLABEL[S.period]}`,
+    `Compared with <b>${G.cmpOK?fmtDay(G.ca)+" to "+fmtDay(G.cz):"— no comparable history"}</b>`];
+  if(isToDate(S.period))parts.push(`Period ends <b>${fmtDay(G.pe)}</b>`);
+  const scope=[];
+  if(S.rep!=="all")scope.push("salesperson "+(REPS.find(r=>r.id===S.rep)||{}).n);
+  if(S.cat!=="all")scope.push("category "+S.cat);
+  if(S.so!=="all")scope.push(S.so+" orders only");
+  if(scope.length)parts.push("Scoped to <b>"+scope.join(", ")+"</b>");
+  c.appendChild(h("div","mini",parts.map(p=>"<span>"+p+"</span>").join("")));
+  return c;
+}
+/* Two persona dashboards. The individual-seller view is the Sales Manager
+   dashboard with the Salesperson parameter set — no separate build, no
+   row-level security, no per-seller rollout. The account view is a
+   drill-through reached by clicking a customer, so it carries no rail entry
+   and no persona of its own. */
 const SHEETS=[
- {id:"cso",icon:"leaderboard",n:"Chief Sales Officer",scope:"Company",tabs:["Performance","Margin & price","Customers","Pipeline"]},
- {id:"mgr",icon:"groups",n:"Sales Manager",scope:"Team",tabs:["Team","Action queue","Pipeline"]},
- {id:"rep",icon:"person",n:"Sales Representative",scope:"Self",tabs:["My day","My numbers"]},
- {id:"kam",icon:"handshake",n:"Key Account Manager",scope:"Assigned accounts",tabs:["Customer 360","Cadence","Credit & A/R"]}];
+ {id:"cso",icon:"leaderboard",n:"Sales Executive",scope:"Company",
+  tabs:["Performance","Growth","Margin & price","Customers","Segments","Pipeline"]},
+ {id:"mgr",icon:"groups",n:"Sales Manager",scope:"Team",
+  tabs:["Team","Accounts","Price & service","Pipeline"]},
+ {id:"acct",icon:"handshake",n:"Account detail",scope:"One account",hidden:1,
+  tabs:["Customer 360","Cadence & service","Credit & A/R"]}];
 
 function reconLine(){
-  const a=G.revYTD,b=G.reps.reduce((s,r)=>s+r.rev,0),
-        c=G.byCust.reduce((s,x)=>s+x.rev,0),d=G.byClass.reduce((s,x)=>s+x[1],0);
+  const a=G.cur.rev,
+        b=G.reps.reduce((s,r)=>s+r.rev,0),
+        c=G.byCust.reduce((s,x)=>s+x.rev,0),
+        d=G.clsRows.reduce((s,x)=>s+x.rev,0);
   const ok=[b,c,d].every(x=>Math.abs(x-a)<Math.max(1,a*1e-6));
-  return h("div","note",`Year to date ${M0(a)} · reconciles across seller, customer and product-class roll-ups: ${ok?"yes":"NO"}`);
+  return h("div","note",
+    `Product sales ${M0(a)} reconciles across seller, customer and product-class roll-ups: ${ok?"yes":"NO"}. `+
+    `Other sales ${M0(G.cur.oth)} sits on the invoice header and is deliberately not allocated to a product class, `+
+    `so total sales ${M0(G.cur.tot)} reconciles by seller and customer but not by class.`);
 }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   SHEETS
+   ══════════════════════════════════════════════════════════════════════════ */
+const ADDITIVE=["sales","prod","qty","tx","cust","leak"];   /* ratios never sum */
 
 function sheetCSO(tab){
   const v=h("div"),g=G;
   v.appendChild(toolbar());
+
+  /* ── Performance ── */
   if(tab===0){
     const r1=row("g4");
-    r1.appendChild(KPI({label:"Revenue YTD",value:M(g.revYTD),
-      cmp:SP((g.revYTD/g.revYTD_LY-1)*100)+"%",dir:g.revYTD>=g.revYTD_LY?1:-1,cmpL:"vs same point LY",
-      prog:g.revYTD/g.planYTD*100,progL:"of plan year to date"}));
-    r1.appendChild(KPI({label:"Margin % net of rebate",value:P(g.mgn),
-      cmp:SP(g.mgn-g.mgnLY)+"pp",dir:g.mgn>=g.mgnLY?1:-1,cmpL:"vs LY",
-      sub:"gross "+P(g.mgnGross)+" · rebate +"+P(g.mgn-g.mgnGross,2)+"pp"}));
-    r1.appendChild(KPI({label:"Revenue MTD",value:M(g.revMTD),
-      cmp:SP((g.revMTD/(g.revMTD_LY||1)-1)*100)+"%",dir:g.revMTD>=g.revMTD_LY?1:-1,cmpL:"vs LY",
-      prog:g.revMTD/g.planMTD*100,progL:"of full-month plan"}));
-    r1.appendChild(KPI({label:"Volume YTD",value:KG(g.kgYTD),
-      cmp:SP((g.kgYTD/(g.kgYTD_LY||1)-1)*100)+"%",dir:g.kgYTD>=g.kgYTD_LY?1:-1,cmpL:"vs same point LY",
-      sub:"realised "+PKG(g.ppk)+" per kg · LY "+PKG(g.ppkLY)}));
+    r1.appendChild(KPIc("Sales",b=>b.tot,M,{prog:g.plan?g.cur.tot/g.plan*100:0,
+      progL:"of plan "+PLABEL[S.period],sub:"product "+M(g.cur.rev)+" · other "+M(g.cur.oth)}));
+    r1.appendChild(KPIc("Gross margin % (product)",b=>b.mgnP,v2=>P(v2),{pp:1,
+      sub:"gross "+P(g.cur.mgnPg)+" · rebate +"+P(g.cur.mgnP-g.cur.mgnPg,2)+"pp"}));
+    r1.appendChild(KPIc("Gross margin % (product + other)",b=>b.mgnT,v2=>P(v2),{pp:1,
+      sub:"header charges carry thin margin"}));
+    r1.appendChild(KPIc("Volume",b=>b.kg,KG,{sub:"ASP "+PKG(g.cur.asp)+" per kg"}));
     v.appendChild(r1);
 
+    /* working-day pacing — attainment paces on selling days, not calendar days */
+    const r1b=row("g4");
+    r1b.appendChild(KPI({label:"Working days in period",value:N(g.wdTotal),icon:"clock",
+      sub:fmtDay(g.a)+" to "+fmtDay(g.pe)}));
+    r1b.appendChild(KPI({label:"Working days elapsed",value:N(g.wdDone),icon:"clock",
+      prog:g.wdTotal?g.wdDone/g.wdTotal*100:0,progL:"of the period"}));
+    r1b.appendChild(KPI({label:"Working days remaining",value:N(g.wdLeft),icon:"clock",
+      sub:isToDate(S.period)?"to period end":"rolling period — no remainder"}));
+    r1b.appendChild(KPI({label:"Pace to plan",value:g.pace==null?"—":P(g.pace,0),
+      cmp:g.pace==null?"n/a":M(g.cur.tot-g.paceExp),dir:g.pace==null?0:g.pace>=100?1:-1,
+      cmpL:"vs working-day pace",sub:"expected by now "+M(g.paceExp)}));
+    v.appendChild(r1b);
+
     const r2=row("g2");
-    const c1=card("Revenue vs plan — month");
-    c1.appendChild(legend([["var(--cat-1)","Invoiced actual"],["var(--cat-2)","Open, ships this month"],["var(--text-primary)","Plan",1]]));
-    c1.appendChild(barStack([["Invoiced actual",g.revMTD,"var(--cat-1)"],["Open, ships this month",g.openMo,"var(--cat-2)"]],
-      {ref:g.planMTD,refLabel:"Plan"}));
-    const c2=card("Revenue vs plan — year to date");
-    c2.appendChild(legend([["var(--cat-1)","Invoiced actual"],["var(--text-primary)","Plan",1]]));
-    c2.appendChild(barStack([["Invoiced actual",g.revYTD,"var(--cat-1)"]],{ref:g.planYTD,refLabel:"Plan"}));
+    const c1=card("Sales vs plan — "+PLABEL[S.period],"invoiced only");
+    c1.appendChild(legend([["var(--cat-1)","Product sales"],["var(--cat-2)","Other sales"],["var(--text-primary)","Plan to date",1]]));
+    c1.appendChild(barStack([["Product sales",g.cur.rev,"var(--cat-1)"],["Other sales",g.cur.oth,"var(--cat-2)"]],
+      {ref:g.plan,refLabel:"Plan"}));
+    const c2=card("Projected period close",isToDate(S.period)?"invoiced plus open book shipping by "+fmtDay(g.pe):"not applicable to a rolling period");
+    if(isToDate(S.period)&&g.openByPeriodEnd!=null){
+      c2.appendChild(legend([["var(--cat-1)","Invoiced"],["var(--cat-2)","Open, ships by period end"],["var(--text-primary)","Full-period plan",1]]));
+      c2.appendChild(barStack([["Invoiced",g.cur.tot,"var(--cat-1)"],["Open, ships by period end",g.openByPeriodEnd,"var(--cat-2)"]],
+        {ref:g.planFull,refLabel:"Plan"}));
+    }else{
+      c2.appendChild(h("div","rule","A rolling period ends at the as-of date, so it has no remaining order book to add. Switch to a to-date period to project a close."));
+    }
     r2.appendChild(c1);r2.appendChild(c2);v.appendChild(r2);
 
     const r3=row("g4");
-    r3.appendChild(KPI({label:"Open order book",value:M(g.open),
-      sub:KG(g.openKg)+" · "+g.openLn+" lines"+(S.so!=="all"?" · "+S.so+" only":"")}));
+    r3.appendChild(KPI({label:"Open order book",value:M(g.open),icon:"truck",
+      sub:KG(g.openKg)+" · "+g.openLn+" lines · open at "+fmtDay(g.b)}));
     r3.appendChild(KPI({label:"Sellers at or above plan",value:g.repsAt+" of "+g.repsN,
       prog:g.repsN?g.repsAt/g.repsN*100:0,progL:"of the roster"}));
-    r3.appendChild(KPI({label:"Revenue concentration",value:P(g.top5),
+    r3.appendChild(KPI({label:"Sales concentration",value:P(g.top5),
       sub:g.topN===1?"largest customer":"top "+g.topN+" customers"}));
-    r3.appendChild(KPI({label:"Accounts at risk",value:String(g.atRisk.length),
-      cmp:M(g.atRiskRev),dir:g.atRisk.length?-1:0,cmpL:"YTD revenue exposed"}));
+    r3.appendChild(KPI({label:"Customer OTIF",value:P(g.cur.otif),
+      cmp:g.prv?SP(g.cur.otif-g.prv.otif)+"pp":"no comparable history",
+      dir:g.prv?(g.cur.otif>=g.prv.otif?1:-1):0,cmpL:g.prv?CMPLBL():"",
+      sub:N(g.cur.orders)+" orders shipped in the window",icon:"truck"}));
     v.appendChild(r3);
 
     const r4=row("g1");
-    const c3=card("Attainment by seller");
-    c3.appendChild(barH(g.reps.slice().sort((a,b)=>b.att-a.att).map(r=>[r.n,r.att,M(r.rev)+" of "+M(r.plan)]),
+    const c3=card("Attainment by seller","plan for "+PLABEL[S.period]);
+    c3.appendChild(barH(g.reps.slice().sort((a,b)=>b.att-a.att).map(r=>[r.n,r.att,M(r.tot)+" of "+M(r.plan)]),
       {fmt:x=>P(x,0),ref:100,refLabel:"plan",lw:130,pr:60}));
     r4.appendChild(c3);v.appendChild(r4);
     v.appendChild(reconLine());
   }
+
+  /* ── Growth: one measure parameter, contribution to change ── */
   if(tab===1){
-    const r1=row("g4");
-    r1.appendChild(KPI({label:"Margin % net of rebate",value:P(g.mgn),cmp:SP(g.mgn-g.mgnTarget)+"pp",
-      dir:g.mgn>=g.mgnTarget?1:-1,cmpL:"vs maintained target",sub:"LY "+P(g.mgnLY)}));
-    r1.appendChild(KPI({label:"Margin dollars YTD",value:M(g.revYTD-g.costYTD+g.rebYTD),
-      sub:"gross "+M(g.revYTD-g.costYTD)+" + rebate "+M(g.rebYTD)}));
-    r1.appendChild(KPI({label:"Supplier rebate YTD",value:M(g.rebYTD),
-      sub:P(g.rebYTD/g.revYTD*100,2)+" of revenue"}));
-    r1.appendChild(KPI({label:"Realised price per kg",value:PKG(g.ppk),
-      cmp:SP((g.ppk/g.ppkLY-1)*100)+"%",dir:g.ppk>=g.ppkLY?1:-1,cmpL:"vs LY"}));
+    const m=measOf(S.meas), f=m[2], fm=m[3];
+    const sw=h("div","card");
+    const swb=h("div","card-toolbar");
+    swb.appendChild(fld("Measure",sel("fMeas",MEAS.map(x=>[x[0],x[1]]),S.meas,x=>{S.meas=x;draw();}),1));
+    sw.appendChild(swb);
+    v.appendChild(sw);
+    v.appendChild(h("div","note",m[1]+" — "+m[4]+
+      (ADDITIVE.indexOf(S.meas)<0?". This is a ratio, so seller contributions do not sum to the company change; the ranking below shows each seller's own value and change instead of a waterfall.":"")));
+
+    const cur=f(g.cur), prv=g.prv?f(g.prv):null;
+    const r1=row("g3");
+    r1.appendChild(KPI({label:m[1]+" — "+PLABEL[S.period],value:fm(cur)}));
+    r1.appendChild(KPI({label:m[1]+" — comparison window",value:prv==null?"—":fm(prv),
+      sub:g.cmpOK?fmtDay(g.ca)+" to "+fmtDay(g.cz):"no comparable history"}));
+    r1.appendChild(KPI({label:"Change",value:prv==null?"—":(cur-prv>=0?"+":"−")+fm(Math.abs(cur-prv)),
+      cmp:prv==null?"n/a":(prv?SP((cur/prv-1)*100)+"%":"n/a"),dir:prv==null?0:cur>=prv?1:-1,cmpL:CMPLBL()}));
     v.appendChild(r1);
-    const r2=row("g2");
-    const c1=card("Margin % trend");
-    c1.appendChild(line([{n:"Margin % net of rebate",d:g.trend.map(t=>t.mgn),l:g.trend.map(t=>t.label)}],
-      {ref:G.mgnTarget,refLabel:"target "+P(G.mgnTarget)}));
-    const c2=card("Realised price per kg");
-    c2.appendChild(line([{n:"Price per kg",d:g.trend.map(t=>t.ppk),l:g.trend.map(t=>t.label)}],{fmt:PKG}));
-    r2.appendChild(c1);r2.appendChild(c2);v.appendChild(r2);
+
+    const deltas=g.reps.map(r=>({n:r.n,cur:f(r.cur),prv:r.prv?f(r.prv):null}))
+      .map(x=>({...x,ch:x.prv==null?null:x.cur-x.prv}));
+    if(ADDITIVE.indexOf(S.meas)>=0&&g.cmpOK){
+      const up=deltas.filter(x=>x.ch>0).sort((a,b)=>b.ch-a.ch);
+      const dn=deltas.filter(x=>x.ch<0).sort((a,b)=>a.ch-b.ch);
+      const r2=row("g2");
+      const cu=card("Favourable movement by seller",fm(up.reduce((s,x)=>s+x.ch,0))+" gained");
+      cu.appendChild(waterfall(up.map(x=>[x.n,x.ch]),{fmt:fm,empty:"No seller improved on this measure."}));
+      const cd=card("Unfavourable movement by seller",fm(Math.abs(dn.reduce((s,x)=>s+x.ch,0)))+" lost");
+      cd.appendChild(waterfall(dn.map(x=>[x.n,x.ch]),{fmt:fm,empty:"No seller declined on this measure."}));
+      r2.appendChild(cu);r2.appendChild(cd);v.appendChild(r2);
+    }else{
+      const r2=row("g1");
+      const cb=card(m[1]+" by seller");
+      cb.appendChild(barH(deltas.slice().sort((a,b)=>b.cur-a.cur).map(x=>[x.n,x.cur,
+        x.ch==null?"no comparison":"change "+(x.ch>=0?"+":"−")+fm(Math.abs(x.ch))]),{fmt:fm,lw:130}));
+      r2.appendChild(cb);v.appendChild(r2);
+    }
     const r3=row("g1");
-    const c3=card("Revenue and margin by product class");
-    const tot={rev:0,mgn:0,cost:0,reb:0,kg:0};
-    const L=rows().filter(l=>inYTD(l.m,CUR_Y()));
-    const byC={};L.forEach(l=>{const w=wMonth(l.m);const o=byC[l.ci]||(byC[l.ci]={rev:0,cost:0,reb:0,kg:0});
-      o.rev+=l.rev*w;o.cost+=l.cost*w;o.reb+=l.reb*w;o.kg+=l.kg*w;});
-    const data=Object.keys(byC).map(k=>{const o=byC[k];tot.rev+=o.rev;tot.cost+=o.cost;tot.reb+=o.reb;tot.kg+=o.kg;
-      const m=(o.rev-o.cost+o.reb)/o.rev*100;
-      return {k:CLSN[k],rev:o.rev,kg:o.kg,ppk:o.rev/o.kg,m,tgt:CLS_TGT[k]};}).sort((a,b)=>b.rev-a.rev);
-    c3.appendChild(tbl(["Product class",{t:"Revenue YTD",n:1},{t:"Volume",n:1},{t:"Price / kg",n:1},{t:"Target %",n:1},{t:"Margin %",n:1}],
-      data.map(d=>({c:[d.k,M(d.rev),KG(d.kg),PKG(d.ppk),P(d.tgt),
-        {html:chip(d.m>=d.tgt?"ok":d.m>=d.tgt-2?"":"warn",P(d.m))}]}))
-      .concat([{tot:1,c:["Total",M(tot.rev),KG(tot.kg),PKG(tot.rev/tot.kg),P(G.mgnTarget),
-        {html:P((tot.rev-tot.cost+tot.reb)/tot.rev*100)}]}])));
-    r3.appendChild(c3);v.appendChild(r3);
+    const ct=card("Seller ranking",m[1]+" · "+PLABEL[S.period]+" "+CMPLBL());
+    ct.appendChild(tbl(["Seller",{t:m[1],n:1},{t:"Comparison",n:1},{t:"Change",n:1},{t:"Change %",n:1}],
+      deltas.slice().sort((a,b)=>(b.ch==null?-1e18:b.ch)-(a.ch==null?-1e18:a.ch)).map(x=>({c:[x.n,fm(x.cur),
+        x.prv==null?"—":fm(x.prv),
+        {html:x.ch==null?"—":chip(x.ch>=0?"ok":"err",(x.ch>=0?"+":"−")+fm(Math.abs(x.ch)))},
+        x.ch==null||!x.prv?"—":SP((x.cur/x.prv-1)*100)+"%"]}))
+      .concat([{tot:1,c:["Total / recomputed",fm(cur),prv==null?"—":fm(prv),
+        prv==null?"—":(cur-prv>=0?"+":"−")+fm(Math.abs(cur-prv)),
+        prv?SP((cur/prv-1)*100)+"%":"—"]}])));
+    r3.appendChild(ct);v.appendChild(r3);
+    if(ADDITIVE.indexOf(S.meas)<0)v.appendChild(h("div","note",
+      "The total row is recomputed from the pooled invoice rows at company scope, not summed or averaged from the seller rows above. That is why it will not equal the arithmetic of the column."));
+  }
+
+  /* ── Margin & price ── */
+  if(tab===2){
+    const r1=row("g4");
+    r1.appendChild(KPIc("Gross margin % (product)",b=>b.mgnP,v2=>P(v2),{pp:1,
+      sub:"maintained target "+P(g.mgnTarget)}));
+    r1.appendChild(KPIc("Gross margin % (product + other)",b=>b.mgnT,v2=>P(v2),{pp:1,
+      sub:"other sales "+M(g.cur.oth)}));
+    r1.appendChild(KPIc("Margin dollars (product)",b=>b.mgn$,M,{
+      sub:"gross "+M(g.cur.rev-g.cur.cost)+" + rebate "+M(g.cur.reb)}));
+    r1.appendChild(KPIc("Supplier rebate",b=>b.reb,M,{
+      sub:P(g.cur.rev?g.cur.reb/g.cur.rev*100:0,2)+" of product sales"}));
+    v.appendChild(r1);
+    /* Price discipline and margin are different mechanisms. A line can hold its
+       margin percentage while being invoiced below its contracted price. */
+    const r1b=row("g4");
+    r1b.appendChild(KPI({label:"Price vs contract",value:P(g.cur.priceIdx,1),
+      cmp:g.prv?SP(g.cur.priceIdx-g.prv.priceIdx,1)+"pp":"no comparable history",
+      dir:g.prv?(g.cur.priceIdx>=g.prv.priceIdx?1:-1):0,cmpL:g.prv?CMPLBL():"",
+      sub:"100% = invoiced at the contracted price"}));
+    r1b.appendChild(KPI({label:"Price leakage",value:M(g.cur.leak),
+      cmp:"contract value "+M(g.cur.cRev),dir:g.cur.priceIdx>=99.5?1:-1,cmpL:"in the window"}));
+    r1b.appendChild(KPI({label:"Contract ASP per kg",value:PKG(g.cur.cAsp),
+      cmp:SP(g.cur.asp-g.cur.cAsp,2),dir:g.cur.asp>=g.cur.cAsp?1:-1,
+      cmpL:"realised minus contract",sub:"realised "+PKG(g.cur.asp)}));
+    r1b.appendChild(KPI({label:"Classes below contract",
+      value:g.clsRows.filter(c=>c.pidx<99.5).length+" of "+g.clsRows.length,
+      sub:"more than 0.5% under the contracted price"}));
+    v.appendChild(r1b);
+    const r2=row("g2");
+    const c1=card("Gross margin % trend","monthly, both definitions");
+    c1.appendChild(legend([["var(--cat-1)","Product",1],["var(--cat-2)","Product + other",1],["var(--text-primary)","Maintained target",1]]));
+    c1.appendChild(line([{n:"Product",d:g.trend.map(t=>t.mgn),l:g.trend.map(t=>t.label)},
+      {n:"Product + other",d:g.trend.map(t=>t.mgnT),l:g.trend.map(t=>t.label)}],
+      {ref:g.mgnTarget,refLabel:"target "+P(g.mgnTarget)}));
+    const c2=card("Average selling price per kg","ASP");
+    c2.appendChild(line([{n:"ASP per kg",d:g.trend.map(t=>t.asp),l:g.trend.map(t=>t.label)}],{fmt:PKG}));
+    r2.appendChild(c1);r2.appendChild(c2);v.appendChild(r2);
+    const r3=row("g2");
+    const c4=card("Product sales vs other sales");
+    c4.appendChild(legend([["var(--cat-1)","Product sales"],["var(--cat-2)","Other sales — header charges"]]));
+    c4.appendChild(barStack([["Product sales",g.cur.rev,"var(--cat-1)"],["Other sales",g.cur.oth,"var(--cat-2)"]],{pr:112}));
+    const othM=g.cur.oth?(g.cur.oth-g.cur.othCost)/g.cur.oth*100:0;
+    c4.appendChild(tbl(["Component","Source",{t:"Value",n:1},{t:"Share",n:1},{t:"Margin %",n:1}],
+      [["Product sales","Sales invoice line",M(g.cur.rev),P(g.cur.tot?g.cur.rev/g.cur.tot*100:0),P(g.cur.mgnP)],
+       ["Other sales","Sales miscellaneous charge, on the invoice header",M(g.cur.oth),
+        P(g.cur.tot?g.cur.oth/g.cur.tot*100:0),P(othM)],
+       {tot:1,c:["Total sales","",M(g.cur.tot),"100.0%",P(g.cur.mgnT)]}]));
+
+    const c5=card("Transaction economics");
+    c5.appendChild(tbl(["Measure",{t:"Current",n:1},{t:"Comparison",n:1},{t:"Change",n:1}],
+      [["# Transactions",N(g.cur.tx),g.prv?N(g.prv.tx):"—",g.prv?SP((g.cur.tx/(g.prv.tx||1)-1)*100)+"%":"—"],
+       ["# Invoice lines",N(g.cur.lines),g.prv?N(g.prv.lines):"—",g.prv?SP((g.cur.lines/(g.prv.lines||1)-1)*100)+"%":"—"],
+       ["# Orders shipped",N(g.cur.orders),g.prv?N(g.prv.orders):"—",g.prv?SP((g.cur.orders/(g.prv.orders||1)-1)*100)+"%":"—"],
+       ["ATV — total sales per transaction",M(g.cur.atv),g.prv?M(g.prv.atv):"—",g.prv&&g.prv.atv?SP((g.cur.atv/g.prv.atv-1)*100)+"%":"—"],
+       ["ASP — product sales per kg",PKG(g.cur.asp),g.prv?PKG(g.prv.asp):"—",g.prv&&g.prv.asp?SP((g.cur.asp/g.prv.asp-1)*100)+"%":"—"],
+       ["Customer OTIF",P(g.cur.otif),g.prv?P(g.prv.otif):"—",g.prv?SP(g.cur.otif-g.prv.otif)+"pp":"—"]]));
+    r3.appendChild(c4);r3.appendChild(c5);v.appendChild(r3);
+    v.appendChild(h("div","note","Freight, tariff and handling sit on the invoice header, so they raise total sales and dilute margin without touching price per kg. Excluding them is what keeps ASP honest — and it is why two gross-margin definitions have to coexist rather than one replacing the other."));
+    const r4=row("g1");
+    const c3=card("Product sales, price and margin by class","product sales only — header charges have neither a contract price nor a class");
+    c3.appendChild(tbl(["Product class",{t:"Product sales",n:1},{t:"Volume",n:1},
+        {t:"Contract / kg",n:1},{t:"ASP / kg",n:1},{t:"vs contract",n:1},{t:"Leakage",n:1},
+        {t:"Target %",n:1},{t:"Margin %",n:1}],
+      g.clsRows.map(d=>({c:[d.n,M(d.rev),KG(d.kg),PKG(d.cppk),PKG(d.ppk),
+        {html:chip(d.pidx>=99.5?"ok":d.pidx>=98?"warn":"err",P(d.pidx,1))},M(d.leak),P(d.tgt),
+        {html:chip(d.mgn>=d.tgt?"ok":d.mgn>=d.tgt-2?"":"warn",P(d.mgn))}]}))
+      .concat([{tot:1,c:["Total product",M(g.cur.rev),KG(g.cur.kg),PKG(g.cur.cAsp),PKG(g.cur.asp),
+                 P(g.cur.priceIdx,1),M(g.cur.leak),P(g.mgnTarget),{html:P(g.cur.mgnP)}]},
+               {tot:1,c:["Other sales (invoice header)",M(g.cur.oth),"—","—","—","—","—","—",
+                 {html:P(g.cur.oth?(g.cur.oth-g.cur.othCost)/g.cur.oth*100:0)}]}])));
+    r4.appendChild(c3);v.appendChild(r4);
     v.appendChild(reconLine());
   }
-  if(tab===2){
-    const r1=row("g1");
-    const c=card("Customers");
-    c.appendChild(tbl(["Customer","Trade class","Status",{t:"Revenue YTD",n:1},{t:"Classes bought",n:1},{t:"Days since order",n:1},"Credit"],
-      g.byCust.map(x=>{const worst=x.classes[0],since=Math.max(0,worst.sinceLast-dEl());
-        const over=since>worst.interval*1.5;
-        return {c:[x.n,x.tc,
-          {html:x.loy==="At risk"?chip("err","At risk"):x.loy==="Loyal"?chip("ok","Loyal"):chip("","Active")},
-          M(x.rev),String(x.classes.length),
-          {html:over?chip("warn",String(since)):String(since)},
-          {html:(()=>{const ar=G.ar[x.id].bal,u=ar/x.lim*100;
-            return ar>x.lim?chip("err","over limit"):u>85?chip("warn",P(u,0)):chip("ok",P(u,0));})()}],
-          click:()=>{S.cust=x.id;S.sheet=3;S.tab=0;draw();}};})));
-    r1.appendChild(c);v.appendChild(r1);
-    const r2=row("g2");
-    const c2=card("Revenue by product class");
-    c2.appendChild(barH(g.byClass.map(x=>[x[0],x[1]]),{lw:150}));
-    const c3=card("Accounts at risk");
-    c3.appendChild(tbl(["Customer","Overdue class",{t:"Days over",n:1},{t:"Revenue YTD",n:1}],
-      g.atRisk.map(x=>{const w=x.classes[0];
-        return {c:[x.n,CLSN[w.ci],String(Math.max(0,w.sinceLast-dEl()-w.interval)),M((g.byCust.find(y=>y.id===x.id)||{}).rev||0)],
-          click:()=>{S.cust=x.id;S.sheet=3;S.tab=1;draw();}};})));
-    r2.appendChild(c2);r2.appendChild(c3);v.appendChild(r2);
-  }
+
+  /* ── Customers ── */
   if(tab===3){
+    const segBy={};g.seg.forEach(o=>segBy[o.c.id]=o);
+    const r1=row("g1");
+    const c=card("Customers",PLABEL[S.period]+" · banded at "+fmtDay(g.b));
+    c.appendChild(tbl(["Customer","Category","Status",{t:"ABC",n:1},{t:"Product sales",n:1},{t:"Other",n:1},
+        {t:"Classes",n:1},{t:"Days since order",n:1},"Trend","Credit"],
+      g.byCust.map(x=>{const s=segBy[x.id]||{};
+        return {c:[x.n,x.cat,
+          {html:s.status==="Lost"?chip("err","Lost"):s.status==="At risk"?chip("warn","At risk"):
+                s.status==="Loyal"?chip("ok","Loyal"):s.status==="Acquired"?chip("pri","Acquired"):chip("",s.status||"—")},
+          s.abc||"—",M(x.rev),M(x.oth),String(x.classes.length),
+          {html:s.rec==null?"—":s.rec>90?chip("warn",N(s.rec)):String(s.rec)},
+          {html:s.trend==="Up"?chip("ok","Up"):s.trend==="Down"?chip("err","Down"):chip("",s.trend||"—")},
+          {html:(()=>{const ar=G.ar[x.id].bal,u=x.lim?ar/x.lim*100:0;
+            return ar>x.lim?chip("err","over limit"):u>85?chip("warn",P(u,0)):chip("ok",P(u,0));})()}],
+          click:()=>{S.cust=x.id;S.from=0;S.sheet=2;S.tab=0;draw();}};})));
+    r1.appendChild(c);v.appendChild(r1);
+    const r2b=row("g2");
+    const cA=card("Product sales by customer category","Base · trade — Customer Category Hierarchy");
+    cA.appendChild(barH(g.byCat.map(x=>[x.cat,x.rev,"price vs contract "+P(x.pidx,1)]),{lw:110}));
+    const cB=card("Product sales by class");
+    cB.appendChild(barH(g.byClass,{lw:150}));
+    r2b.appendChild(cA);r2b.appendChild(cB);v.appendChild(r2b);
+    const r2=row("g1");
+    const c3=card("Accounts past expected reorder","ERP reorder cadence, not the RFM band");
+    c3.appendChild(tbl(["Customer","Overdue class",{t:"Expected every",n:1},{t:"Days over",n:1}],
+      g.decay.slice(0,12).map(o=>({c:[o.c.n,CLSN[o.cl.ci],o.cl.interval+"d",
+        {html:o.over>o.cl.interval?chip("err",N(o.over)):chip("warn",N(o.over))}],
+        click:()=>{S.cust=o.c.id;S.from=0;S.sheet=2;S.tab=1;draw();}}))));
+    r2.appendChild(c3);v.appendChild(r2);
+    v.appendChild(h("div","note",
+      "Two different mechanisms are shown deliberately. The Status column is an RFM band — recency, frequency and monetary value over a trailing year. "+
+      "Accounts past expected reorder reads the ERP reorder cadence at customer x product grain. An account can be Active on one and overdue on the other."));
+  }
+
+  /* ── Segments: the banding rules and the customer counts they produce ── */
+  if(tab===4){
+    const seg=g.seg;
+    const r1=row("gauto");
+    const mk=(l,k,ic)=>KPI({label:l,value:N(g.segCount(k)),icon:ic||"groups",
+      sub:P(seg.length?g.segCount(k)/seg.length*100:0,0)+" of "+seg.length+" accounts"});
+    r1.appendChild(mk("# Acquired customers","acquired"));
+    r1.appendChild(mk("# Active customers","active"));
+    r1.appendChild(mk("# Loyal customers","loyal"));
+    r1.appendChild(mk("# Repeat customers","repeat"));
+    r1.appendChild(mk("# High volume customers","high"));
+    r1.appendChild(mk("# At risk customers","atRisk"));
+    r1.appendChild(mk("# Lost customers","lost"));
+    v.appendChild(r1);
+    v.appendChild(h("div","note",
+      "These are bands, not a partition — the same account can be Active, Repeat, Loyal and High volume at once, which is why the counts do not sum to the roster. "+
+      "Every threshold below is a rule against a source column, written to a target column: in the real product they are configurable per customer."));
+    const cnt=(key,order)=>{const m={};seg.forEach(o=>{m[o[key]]=(m[o[key]]||0)+1;});
+      return order.filter(x=>m[x]).map(x=>[x,m[x]]);};
+    const r2=row("g2");
+    const c1=card("Recency band","Rule: Customer Insights · Days Since Last Activity → Recency Band");
+    c1.appendChild(barH(cnt("recB",RECB.map(x=>x[1])),{fmt:N,lw:96,pr:44}));
+    const c2=card("Frequency band","Rule: Customer Insights · Number Sales Txns → Frequency Band · trailing 12 months");
+    c2.appendChild(barH(cnt("freqB",FRQB.map(x=>x[1])),{fmt:N,lw:96,pr:44}));
+    r2.appendChild(c1);r2.appendChild(c2);v.appendChild(r2);
+    const r3=row("g2");
+    const c3=card("ABC band","Rule: Customer Insights · Net Sales Amount → ABC Band · percentage banding, A to 80%, B to 95%, C the rest");
+    c3.appendChild(barH(cnt("abc",["A","B","C","—"]),{fmt:N,lw:96,pr:44}));
+    const c4=card("Sales trend direction","Rule: Customer Insights · Net Sales Amount → Trend Direction · trailing 3 months vs the same 3 a year earlier, ±5% dead band");
+    c4.appendChild(barH(cnt("trend",["Up","Flat","Down","—"]),{fmt:N,lw:96,pr:44}));
+    r3.appendChild(c3);r3.appendChild(c4);v.appendChild(r3);
+    const r4=row("g1");
+    const c5=card("Customer bands","every band, evaluated at "+fmtDay(g.b));
+    c5.appendChild(tbl(["Customer","Category",{t:"Trailing 12-mo sales",n:1},{t:"Share",n:1},"ABC",
+        {t:"Recency",n:1},"Recency band",{t:"Txns 12 mo",n:1},"Frequency band","Relationship","Trend","Status"],
+      seg.slice().sort((a,b)=>b.mon-a.mon).map(o=>({c:[o.c.n,o.c.cat,M(o.mon),P(o.share||0),
+        {html:o.abc==="A"?chip("pri","A"):o.abc==="B"?chip("","B"):o.abc==="C"?chip("","C"):"—"},
+        o.rec>=9999?"never":N(o.rec),o.recB,N(o.freq),o.freqB,o.relB,
+        {html:o.trend==="Up"?chip("ok","Up"):o.trend==="Down"?chip("err","Down"):chip("",o.trend)},
+        {html:o.status==="Lost"?chip("err","Lost"):o.status==="At risk"?chip("warn","At risk"):
+              o.status==="Loyal"?chip("ok","Loyal"):o.status==="Acquired"?chip("pri","Acquired"):chip("",o.status)}],
+        click:()=>{S.cust=o.c.id;S.from=0;S.sheet=2;S.tab=0;draw();}}))));
+    r4.appendChild(c5);v.appendChild(r4);
+    v.appendChild(h("div","note",
+      "Band definitions on this sheet: Acquired = first invoice within 365 days · Active = invoiced within 90 days · "+
+      "Repeat = 2 or more transactions in the trailing 12 months · Loyal = relationship 540 days or more, 8 or more transactions, and active · "+
+      "High volume = ABC band A · At risk = last invoice 91 to 365 days ago, or active but declining with recency over 45 days · Lost = no invoice in 365 days."));
+  }
+
+  /* ── Pipeline ── */
+  if(tab===5){
     const r1=row("g4");
-    r1.appendChild(KPI({label:"Open pipeline",value:M(g.pipeTot),sub:"CRM opportunities"}));
-    r1.appendChild(KPI({label:"Coverage vs remaining plan",value:g.cov?g.cov.toFixed(1)+"×":"n/a",
-      sub:g.cov?M(Math.max(g.planYTD-g.revYTD,0))+" still to plan":"plan already met"}));
-    r1.appendChild(KPI({label:"Quote-to-order conversion",value:P(g.qconv),
-      cmp:SP(g.qconv-31)+"pp",dir:g.qconv>=31?1:-1,cmpL:"vs 31% benchmark",sub:G.qN+" quotes resolved"}));
-    r1.appendChild(KPI({label:"Forecast accuracy",value:"—",
-      cmp:"not buildable",dir:-1,cmpL:"needs opportunity history"}));
+    r1.appendChild(KPI({label:"Open pipeline",value:M(g.pipeTot),
+      sub:"open at "+fmtDay(g.b)+" · CRM opportunity = quote header"}));
+    r1.appendChild(KPI({label:"Coverage vs remaining plan",value:g.cov==null?"n/a":g.cov.toFixed(1)+"×",
+      sub:g.cov==null?"plan for this period already met":M(Math.max(g.plan-g.cur.tot,0))+" still to plan"}));
+    r1.appendChild(KPI({label:"Quote-to-order conversion",value:g.qN>=10?P(g.qconv):"—",
+      sub:g.qN?g.qN+" quotes decided in "+PLABEL[S.period]:"no quotes decided in this window",
+      cmp:g.qN<10?"denominator under 10 — rate suppressed":(g.qN<=20?"denominator "+g.qN+" — treat as indicative":null),
+      dir:0}));
+    r1.appendChild(KPI({label:"New pipeline created",value:M(g.newPipe),
+      sub:"opportunities created in "+PLABEL[S.period]}));
     v.appendChild(r1);
     const r2=row("g2");
-    const c1=card("Pipeline by stage");c1.appendChild(funnel(g.pipeStage));
-    const c2=card("Unconverted quotes by age");
-    c2.appendChild(barH(g.qAge.map(x=>[x[0],x[1]]),{lw:96}));
+    const c1=card("Pipeline by stage","stage as at "+fmtDay(g.b));c1.appendChild(funnel(g.pipeStage));
+    const c2=card("Unconverted quotes by age","Rule: Open Sales Quote · Quote Date → Quote Age Band · "+M(g.qOpen)+" open at "+fmtDay(g.b));
+    c2.appendChild(barH(g.qAge,{lw:96}));
     r2.appendChild(c1);r2.appendChild(c2);v.appendChild(r2);
+    v.appendChild(winLossRow(g));
+    const r3=row("g1");
+    const c3=card("Open order book by age band","Rule: Open Sales Order · Order Date → Order Age Band · "+M(g.open)+" open at "+fmtDay(g.b));
+    c3.appendChild(barH(g.openAge,{lw:96}));
+    r3.appendChild(c3);v.appendChild(r3);
   }
   return v;
 }
@@ -858,210 +1504,381 @@ function sheetCSO(tab){
 function sheetMGR(tab){
   const v=h("div"),g=G;
   v.appendChild(toolbar());
-  const over=custList().filter(c=>{const ar=G.ar[c.id].bal;return ar>c.lim||ar/c.lim>0.85;});
+  const segBy={};g.seg.forEach(o=>segBy[o.c.id]=o);
+  const over=custList().filter(c=>{const ar=G.ar[c.id].bal;return c.lim&&(ar>c.lim||ar/c.lim>0.85);});
+
+  /* ── Team ── */
   if(tab===0){
     const r1=row("g4");
-    r1.appendChild(KPI({label:"Team revenue YTD",value:M(g.revYTD),
-      cmp:SP((g.revYTD/g.planYTD-1)*100)+"%",dir:g.revYTD>=g.planYTD?1:-1,cmpL:"vs plan",
-      prog:g.revYTD/g.planYTD*100,progL:"of plan year to date"}));
-    r1.appendChild(KPI({label:"Team margin %",value:P(g.mgn),
-      cmp:SP(g.mgn-g.coMgn)+"pp",dir:g.mgn>=g.coMgn?1:-1,cmpL:"vs company"}));
-    r1.appendChild(KPI({label:"Open order book",value:M(g.open),
-      sub:KG(g.openKg)+" · "+g.openLn+" lines"}));
-    r1.appendChild(KPI({label:"Accounts over credit limit",value:String(over.length),
-      cmp:over.length?"shipment blocked":"all clear",dir:over.length?-1:1}));
+    r1.appendChild(KPIc("Team sales",b=>b.tot,M,{prog:g.plan?g.cur.tot/g.plan*100:0,
+      progL:"of plan "+PLABEL[S.period],sub:"product "+M(g.cur.rev)+" · other "+M(g.cur.oth)}));
+    r1.appendChild(KPI({label:"Gross margin % (product)",value:P(g.cur.mgnP),
+      cmp:SP(g.cur.mgnP-g.coB.mgnP)+"pp",dir:g.cur.mgnP>=g.coB.mgnP?1:-1,cmpL:"vs company"}));
+    r1.appendChild(KPI({label:"Pace to plan",value:g.pace==null?"—":P(g.pace,0),icon:"clock",
+      cmp:g.pace==null?"n/a":N(g.wdLeft)+" working days left",dir:g.pace==null?0:g.pace>=100?1:-1,
+      cmpL:"",sub:"expected by now "+M(g.paceExp)}));
+    r1.appendChild(KPI({label:"Accounts over or near credit limit",value:String(over.length),
+      cmp:over.length?"shipment risk":"all clear",dir:over.length?-1:1}));
     v.appendChild(r1);
+
     const r2=row("g1");
-    const c=card("Seller scorecard");
-    c.appendChild(tbl(["Seller","Team",{t:"Revenue YTD",n:1},{t:"Plan YTD",n:1},{t:"Attainment",n:1},
-        {t:"Margin %",n:1},{t:"Coverage",n:1},{t:"Quote conv.",n:1},{t:"At-risk accounts",n:1}],
-      g.reps.slice().sort((a,b)=>b.att-a.att).map(r=>({c:[r.n,r.team,M(r.rev),M(r.plan),
+    const c=card("Seller scorecard",PLABEL[S.period]+" "+CMPLBL()+" · click a row to scope the whole dashboard to that seller");
+    c.appendChild(tbl(["Seller","Team",{t:"Sales",n:1},{t:"Plan",n:1},{t:"Attainment",n:1},
+        {t:"Change",n:1},{t:"Margin %",n:1},{t:"Price vs contract",n:1},{t:"OTIF",n:1},
+        {t:"Coverage",n:1},{t:"Quote conv.",n:1},{t:"Overdue lines",n:1}],
+      g.reps.slice().sort((a,b)=>b.att-a.att).map(r=>({c:[r.n,r.team,M(r.tot),M(r.plan),
         {html:chip(r.att>=100?"ok":r.att>=85?"":"warn",P(r.att,0))},
-        {html:chip(r.mgn>=g.coMgn?"ok":"warn",P(r.mgn))},
-        r.cov>90?"—":r.cov.toFixed(1)+"×",P(r.qc,0),
+        {html:r.prv?chip(r.tot>=r.prv.tot?"ok":"err",SP((r.tot/(r.prv.tot||1)-1)*100)+"%"):"—"},
+        {html:chip(r.mgn>=g.coB.mgnP?"ok":"warn",P(r.mgn))},
+        {html:chip(r.cur.priceIdx>=99.5?"ok":r.cur.priceIdx>=98?"warn":"err",P(r.cur.priceIdx,1))},
+        {html:chip(r.otif>=95?"ok":r.otif>=88?"warn":"err",P(r.otif,0))},
+        r.plan-r.tot<=0?"plan met":r.cov>20?">20×":r.cov.toFixed(1)+"×",
+        {html:r.qn<10?'<span style="color:var(--text-tertiary)">n='+r.qn+' · suppressed</span>'
+              :chip(r.qn<=20?"warn":"",P(r.qc,0)+" · n="+r.qn)},
         {html:r.flag>4?chip("err",String(r.flag)):r.flag?chip("warn",String(r.flag)):chip("ok","0")}],
-        click:()=>{S.rep=r.id;S.sheet=2;S.tab=0;draw();}}))
-      .concat([{tot:1,c:["Total / weighted","",M(g.revYTD),M(g.planYTD),P(g.revYTD/g.planYTD*100,0),
-        P(g.mgn),"","",String(g.reps.reduce((s,r)=>s+r.flag,0))]}])));
+        click:()=>{S.rep=r.id;S.tab=0;draw();}}))
+      .concat([{tot:1,c:["Total / recomputed","",M(g.cur.tot),M(g.plan),P(g.plan?g.cur.tot/g.plan*100:0,0),
+        g.prv?SP((g.cur.tot/(g.prv.tot||1)-1)*100)+"%":"—",P(g.cur.mgnP),P(g.cur.priceIdx,1),
+        P(g.cur.otif,0),"","",String(g.reps.reduce((s,r)=>s+r.flag,0))]}])));
     r2.appendChild(c);v.appendChild(r2);
+
+    /* The individual-seller view is this sheet with the Salesperson parameter
+       set — not a separate dashboard. These two are what a rep needs on their
+       own numbers, and they read identically at team scope. */
+    const r3=row("g2");
+    const c1=card("Sales vs plan",PLABEL[S.period]+(S.rep!=="all"?" · "+(REPS.find(r=>r.id===S.rep)||{}).n:" · whole team"));
+    c1.appendChild(legend([["var(--cat-1)","Product sales"],["var(--cat-2)","Other sales"],["var(--text-primary)","Plan",1]]));
+    c1.appendChild(barStack([["Product sales",g.cur.rev,"var(--cat-1)"],["Other sales",g.cur.oth,"var(--cat-2)"]],
+      {ref:g.plan,refLabel:"Plan"}));
+    const c2=card("Gross margin % vs company","monthly");
+    c2.appendChild(legend([["var(--cat-1)",S.rep==="all"?"Team":"This seller",1],["var(--cat-2)","Company",1]]));
+    const ids={};custList().forEach(c3=>ids[c3.id]=1);
+    const mineIV=INV.filter(x=>ids[x.cust]), coIV=INV.filter(x=>x.co===coK());
+    const ser=L=>g.trend.map(t=>bundle(L.filter(x=>x.m===t.m&&x.d<=g.b),-1e9,1e9).mgnP);
+    c2.appendChild(line([{n:S.rep==="all"?"Team":"This seller",d:ser(mineIV),l:g.trend.map(t=>t.label)},
+      {n:"Company",d:ser(coIV),l:g.trend.map(t=>t.label)}]));
+    r3.appendChild(c1);r3.appendChild(c2);v.appendChild(r3);
     v.appendChild(reconLine());
   }
-  if(tab===1){
-    const r1=row("g1");
-    const c=card("Account action queue");
-    const q=[];
-    custList().forEach(x=>x.classes.forEach(cl=>{
-      const since=cl.sinceLast-dEl(), over=since-cl.interval;
-      if(over>cl.interval*0.5)q.push({x,cl,since:Math.max(0,since),over:Math.round(over)});}));
-    q.sort((a,b)=>b.over-a.over);
-    c.appendChild(tbl(["Customer","Product class","Owner",{t:"Expected every",n:1},{t:"Days since order",n:1},{t:"Days over",n:1},"Credit"],
-      q.slice(0,14).map(o=>({c:[o.x.n,CLSN[o.cl.ci],(REPS.find(r=>r.id===o.x.rep)||{}).n,
-        o.cl.interval+"d",String(o.since),
-        {html:o.over>o.cl.interval?chip("err",String(o.over)):chip("warn",String(o.over))},
-        {html:G.ar[o.x.id].bal>o.x.lim?chip("err","over limit"):chip("ok","ok")}],
-        click:()=>{S.cust=o.x.id;S.sheet=3;S.tab=1;draw();}}))));
-    r1.appendChild(c);v.appendChild(r1);
-    const r2=row("g1");
-    const c2=card("Credit exposure");
-    c2.appendChild(tbl(["Customer",{t:"A/R balance",n:1},{t:"Credit limit",n:1},{t:"Utilisation",n:1},{t:"Avg days to pay",n:1},"Status"],
-      over.sort((a,b)=>G.ar[b.id].bal/b.lim-G.ar[a.id].bal/a.lim).map(x=>({c:[x.n,M0(G.ar[x.id].bal),M0(x.lim),
-        P(G.ar[x.id].bal/x.lim*100,0),G.ar[x.id].dtp.toFixed(1),
-        {html:G.ar[x.id].bal>x.lim?chip("err","over limit"):chip("warn","near limit")}],
-        click:()=>{S.cust=x.id;S.sheet=3;S.tab=2;draw();}}))));
-    r2.appendChild(c2);v.appendChild(r2);
-  }
-  if(tab===2){
-    const r1=row("g2");
-    const c1=card("Pipeline by stage");c1.appendChild(funnel(g.pipeStage));
-    const c2=card("Unconverted quotes by age");
-    c2.appendChild(barH(g.qAge.map(x=>[x[0],x[1]]),{lw:96}));
-    r1.appendChild(c1);r1.appendChild(c2);v.appendChild(r1);
-    const r2=row("g1");
-    const c3=card("Pipeline by seller");
-    c3.appendChild(barH(g.reps.slice().sort((a,b)=>b.pipe-a.pipe).map(r=>[r.n,g.repPipe[r.id]||0,M(Math.max(r.plan-r.rev,0))+" still to plan"]),
-      {lw:118}));
-    r2.appendChild(c3);v.appendChild(r2);
-  }
-  return v;
-}
 
-function sheetREP(tab){
-  const v=h("div"),g=G;
-  v.appendChild(toolbar());
-  const me=g.reps.find(r=>r.id===S.rep)||g.reps[0];   /* no state mutation */
-  if(!me)return h("div","vis-s","No sellers in this company.");
-  const mine=CUST.filter(c=>c.rep===me.id);
-  if(tab===0){
+  /* ── Accounts: health, order frequency, DSO, the reorder queue ── */
+  if(tab===1){
     const r1=row("g4");
-    r1.appendChild(KPI({label:"My revenue YTD",value:M(me.rev),
-      cmp:SP(me.att-100)+"pp",dir:me.att>=100?1:-1,cmpL:"vs plan",prog:me.att,progL:"of plan year to date"}));
-    r1.appendChild(KPI({label:"My margin %",value:P(me.mgn),
-      cmp:SP(me.mgn-g.coMgn)+"pp",dir:me.mgn>=g.coMgn?1:-1,cmpL:"vs company"}));
-    r1.appendChild(KPI({label:"My accounts",value:String(mine.length),
-      sub:M(g.byCust.filter(c=>c.rep===me.id).reduce((s,c)=>s+c.rev,0))+" YTD"}));
-    r1.appendChild(KPI({label:"Lines needing a call",value:String(me.flag),
-      cmp:me.flag?"past expected reorder":"on cadence",dir:me.flag?-1:1}));
+    r1.appendChild(KPI({label:"Accounts in scope",value:N(g.byCust.length),icon:"groups",
+      sub:N(g.byCust.filter(c=>c.rev>0).length)+" invoiced in "+PLABEL[S.period]}));
+    r1.appendChild(KPI({label:"At risk",value:N(g.segCount("atRisk")),icon:"groups",
+      cmp:g.segCount("atRisk")?"RFM recency or declining trend":"none",dir:g.segCount("atRisk")?-1:1}));
+    r1.appendChild(KPI({label:"Lines past expected reorder",value:N(g.decay.length),
+      cmp:g.decayCust.length+" accounts",dir:g.decay.length?-1:1,cmpL:"affected",
+      sub:M(g.decayRev)+" sales in the window from those accounts"}));
+    r1.appendChild(KPI({label:"Lost",value:N(g.segCount("lost")),icon:"groups",
+      cmp:g.segCount("lost")?"no invoice in 365 days":"none",dir:g.segCount("lost")?-1:0}));
     v.appendChild(r1);
+
     const r2=row("g1");
-    const c=card("My call list");
-    const q=[];mine.forEach(x=>x.classes.forEach(cl=>{
-      const since=cl.sinceLast-dEl(),over=since-cl.interval;
-      q.push({x,cl,since:Math.max(0,since),over:Math.round(over)});}));
-    q.sort((a,b)=>b.over-a.over);
-    c.appendChild(tbl(["Customer","Product class",{t:"Expected every",n:1},{t:"Days since",n:1},"Status","Credit"],
-      q.slice(0,12).map(o=>({c:[o.x.n,CLSN[o.cl.ci],o.cl.interval+"d",String(o.since),
-        {html:o.over>o.cl.interval?chip("err",o.over+"d over"):o.over>0?chip("warn",o.over+"d over"):chip("ok","on cadence")},
-        {html:G.ar[o.x.id].bal>o.x.lim?chip("err","over limit"):chip("ok","ok")}],
-        click:()=>{S.cust=o.x.id;S.sheet=3;S.tab=0;draw();}}))));
+    const c=card("Account health",PLABEL[S.period]+" · banded and aged at "+fmtDay(g.b));
+    c.appendChild(tbl(["Customer","Category","ABC",{t:"Sales",n:1},{t:"Orders 12 mo",n:1},
+        {t:"Days since order",n:1},"Trend",{t:"DSO",n:1},{t:"DSO vs prior",n:1},"Status","Credit"],
+      g.byCust.map(x=>{const sg=segBy[x.id]||{},ar=G.ar[x.id],dd=ar.dso-ar.dsoPrior;
+        return {c:[x.n,x.cat,
+          {html:sg.abc==="A"?chip("pri","A"):sg.abc?chip("",sg.abc):"—"},
+          M(x.rev+x.oth),N(sg.freq||0),
+          {html:sg.rec==null?"—":sg.rec>=9999?chip("err","never"):sg.rec>90?chip("warn",N(sg.rec)):String(sg.rec)},
+          {html:sg.trend==="Up"?chip("ok","Up"):sg.trend==="Down"?chip("err","Down"):chip("",sg.trend||"—")},
+          ar.dso?ar.dso.toFixed(0):"—",
+          {html:!ar.dsoPrior?"—":chip(dd>7?"err":dd>2?"warn":"ok",SP(dd,0)+"d")},
+          {html:sg.status==="Lost"?chip("err","Lost"):sg.status==="At risk"?chip("warn","At risk"):
+                sg.status==="Loyal"?chip("ok","Loyal"):sg.status==="Acquired"?chip("pri","Acquired"):chip("",sg.status||"—")},
+          {html:(()=>{const u=x.lim?ar.bal/x.lim*100:0;
+            return ar.bal>x.lim?chip("err","over limit"):u>85?chip("warn",P(u,0)):chip("ok",P(u,0));})()}],
+          click:()=>{S.cust=x.id;S.from=1;S.sheet=2;S.tab=0;draw();}};})));
     r2.appendChild(c);v.appendChild(r2);
+    v.appendChild(h("div","note",
+      "DSO = A/R balance ÷ trailing-365 sales × 365, evaluated at the as-of date, compared with the same "+
+      "calculation on the window ending 90 days earlier. The delta is the signal, not the level — a customer "+
+      "stretching from 32 to 44 days matters more than one sitting steadily at 50."));
+
     const r3=row("g1");
-    const c2=card("My orders shipping in the next 7 days",S.so!=="all"?S.so+" only":null);
-    const sh=g.ship7.filter(o=>o.rep===me.id);
-    c2.appendChild(sh.length?tbl(["Customer","Product class",{t:"Volume",n:1},{t:"Value",n:1},{t:"Ships in",n:1}],
-      sh.map(o=>[(CUST.find(c=>c.id===o.cust)||{}).n,CLSN[o.ci],KG(o.kg),M(o.rev),o.shipIn+"d"]))
-      :h("div","vis-s","Nothing confirmed in the next 7 days under this filter."));
+    const c2=card("Reorder queue","ERP reorder cadence at customer × product, ranked by days past the expected date");
+    c2.appendChild(g.decay.length?tbl(["Customer","Product class","Owner",{t:"Expected every",n:1},
+        {t:"Days since order",n:1},{t:"Days over",n:1},"Status","Credit"],
+      g.decay.slice(0,16).map(o=>({c:[o.c.n,CLSN[o.cl.ci],(REPS.find(r=>r.id===o.c.rep)||{}).n,
+        o.cl.interval+"d",N(o.since),
+        {html:o.over>o.cl.interval?chip("err",N(o.over)):chip("warn",N(o.over))},
+        {html:(()=>{const sg=segBy[o.c.id]||{};
+          return sg.status==="Lost"?chip("err","Lost"):sg.status==="At risk"?chip("warn","At risk"):chip("",sg.status||"—");})()},
+        {html:G.ar[o.c.id].bal>o.c.lim?chip("err","over limit"):G.ar[o.c.id].bal/o.c.lim>0.85?chip("warn","near limit"):chip("ok","ok")}],
+        click:()=>{S.cust=o.c.id;S.from=1;S.sheet=2;S.tab=1;draw();}})))
+      :h("div","rule","Every line in scope is inside its expected reorder interval at this as-of date."));
     r3.appendChild(c2);v.appendChild(r3);
+
+    const r4=row("g2");
+    const c3=card("Accounts by status band","Rule: Customer Insights · recency, frequency and trend → Status");
+    const cnt={};g.seg.forEach(o=>{cnt[o.status]=(cnt[o.status]||0)+1;});
+    c3.appendChild(barH(["Loyal","Active","Acquired","At risk","Dormant","Lost"].filter(k=>cnt[k])
+      .map(k=>[k,cnt[k]]),{fmt:N,lw:96,pr:44}));
+    const c4=card("Credit exposure","accounts over or near the approved limit");
+    c4.appendChild(over.length?tbl(["Customer",{t:"A/R balance",n:1},{t:"Credit limit",n:1},
+        {t:"Utilisation",n:1},{t:"DSO",n:1},"Status"],
+      over.sort((a,b)=>G.ar[b.id].bal/b.lim-G.ar[a.id].bal/a.lim).map(x=>({c:[x.n,M0(G.ar[x.id].bal),M0(x.lim),
+        P(G.ar[x.id].bal/x.lim*100,0),G.ar[x.id].dso.toFixed(0),
+        {html:G.ar[x.id].bal>x.lim?chip("err","over limit"):chip("warn","near limit")}],
+        click:()=>{S.cust=x.id;S.from=1;S.sheet=2;S.tab=2;draw();}})))
+      :h("div","rule","No account in scope is over or within 15% of its approved limit."));
+    r4.appendChild(c3);r4.appendChild(c4);v.appendChild(r4);
   }
-  if(tab===1){
-    const r1=row("g2");
-    const c1=card("My revenue vs plan");
-    c1.appendChild(legend([["var(--cat-1)","Invoiced actual"],["var(--text-primary)","Plan",1]]));
-    c1.appendChild(barStack([["Invoiced actual",me.rev,"var(--cat-1)"]],{ref:me.plan,refLabel:"Plan"}));
-    const c2=card("My margin % vs company");
-    c2.appendChild(legend([["var(--cat-1)","My margin %",1],["var(--cat-2)","Company",1]]));
-    const mineL=LINES.filter(l=>l.rep===me.id), coL=LINES.filter(l=>l.co===coK());
-    const ser=(L)=>g.trend.map(t=>{const ml=L.filter(l=>l.m===t.m);
-      const rv=ml.reduce((s,l)=>s+l.rev,0)||1;
-      return (rv-ml.reduce((s,l)=>s+l.cost,0)+ml.reduce((s,l)=>s+l.reb,0))/rv*100;});
-    c2.appendChild(line([{n:"My margin %",d:ser(mineL),l:g.trend.map(t=>t.label)},
-      {n:"Company",d:ser(coL),l:g.trend.map(t=>t.label)}]));
-    r1.appendChild(c1);r1.appendChild(c2);v.appendChild(r1);
-    const r2=row("g1");
-    const c3=card("My revenue by product class");
-    const byC={};mineL.forEach(l=>{if(!inYTD(l.m,CUR_Y()))return;byC[l.ci]=(byC[l.ci]||0)+l.rev*wMonth(l.m);});
-    c3.appendChild(barH(Object.keys(byC).map(k=>[CLSN[k],byC[k]]).sort((a,b)=>b[1]-a[1]),{lw:150}));
-    r2.appendChild(c3);v.appendChild(r2);
+
+  /* ── Price & service ── */
+  if(tab===2){
+    const r1=row("g4");
+    r1.appendChild(KPI({label:"Price vs contract",value:P(g.cur.priceIdx,1),
+      cmp:g.prv?SP(g.cur.priceIdx-g.prv.priceIdx,1)+"pp":"no comparable history",
+      dir:g.prv?(g.cur.priceIdx>=g.prv.priceIdx?1:-1):0,cmpL:g.prv?CMPLBL():"",
+      sub:"invoiced "+M(g.cur.rev)+" against contract value "+M(g.cur.cRev)}));
+    r1.appendChild(KPI({label:"Price leakage",value:M(g.cur.leak),
+      cmp:g.prv?SP((g.cur.leak/(g.prv.leak||1)-1)*100)+"%":"no comparable history",
+      dir:g.prv?(g.cur.leak<=g.prv.leak?1:-1):0,cmpL:g.prv?CMPLBL():"",
+      sub:"contract value not invoiced in "+PLABEL[S.period]}));
+    r1.appendChild(KPI({label:"Customer OTIF",value:P(g.cur.otif),icon:"truck",
+      cmp:g.prv?SP(g.cur.otif-g.prv.otif)+"pp":"no comparable history",
+      dir:g.prv?(g.cur.otif>=g.prv.otif?1:-1):0,cmpL:g.prv?CMPLBL():"",
+      sub:N(g.cur.orders)+" orders shipped in the window"}));
+    const late=INV.filter(x=>g.byCust.some(c=>c.id===x.cust)&&x.d>=g.a&&x.d<=g.z&&x.late).length;
+    const shrt=INV.filter(x=>g.byCust.some(c=>c.id===x.cust)&&x.d>=g.a&&x.d<=g.z&&x.short).length;
+    r1.appendChild(KPI({label:"Service failures",value:N(late+shrt),icon:"truck",
+      sub:N(late)+" late · "+N(shrt)+" short-shipped"}));
+    v.appendChild(r1);
+    v.appendChild(h("div","note",
+      "Price leakage is the gap between what the contract says and what the invoice charged: contract value "+
+      "minus invoiced value, at invoice-line grain. It is a different mechanism from margin erosion — a line can "+
+      "hold its margin percentage while being sold below its contracted price, because cost moved too. "+
+      "This measure needs contract price at customer × product with effective dates, which has no confirmed "+
+      "source table yet; the figures here come from the demo's own contract prices."));
+
+    const r2=row("g2");
+    const c1=card("Price variance from contract, by customer","the twelve furthest from contract, in percentage points");
+    const pvc=g.byCust.filter(c=>c.pidx!=null)
+      .sort((a,b)=>Math.abs(b.pidx-100)-Math.abs(a.pidx-100)).slice(0,12)
+      .sort((a,b)=>a.pidx-b.pidx);
+    c1.appendChild(barH(pvc.map(c=>[c.n,c.pidx-100,
+      "invoiced "+P(c.pidx,1)+" of contract · leakage "+M(c.leak)]),
+      {fmt:x=>SP(x,1)+"pp",lw:170,pr:70}));
+    const c2=card("Price leakage by seller",PLABEL[S.period]);
+    c2.appendChild(barH(g.reps.slice().sort((a,b)=>b.cur.leak-a.cur.leak)
+      .map(r=>[r.n,r.cur.leak,P(r.cur.priceIdx,1)+" of contract"]),{lw:130}));
+    r2.appendChild(c1);r2.appendChild(c2);v.appendChild(r2);
+
+    const r3=row("g1");
+    const c3=card("Price variance detail","by customer, product sales only — header charges have no contract price");
+    c3.appendChild(tbl(["Customer","Category","Owner",{t:"Invoiced",n:1},{t:"Contract value",n:1},
+        {t:"Leakage",n:1},{t:"Price vs contract",n:1}],
+      g.byCust.filter(c=>c.cRev>0).sort((a,b)=>b.leak-a.leak).map(c=>({c:[c.n,c.cat,
+        (REPS.find(r=>r.id===c.rep)||{}).n,M(c.rev),M(c.cRev),M(c.leak),
+        {html:chip(c.pidx>=99.5?"ok":c.pidx>=98?"warn":"err",P(c.pidx,1))}],
+        click:()=>{S.cust=c.id;S.from=1;S.sheet=2;S.tab=0;draw();}}))
+      .concat([{tot:1,c:["Total / recomputed","","",M(g.cur.rev),M(g.cur.cRev),M(g.cur.leak),
+        P(g.cur.priceIdx,1)]}])));
+    r3.appendChild(c3);v.appendChild(r3);
+
+    const r4=row("g2");
+    const c4=card("Service failure rate by seller","share of orders not on time and in full");
+    c4.appendChild(barH(g.reps.slice().sort((a,b)=>a.otif-b.otif)
+      .map(r=>[r.n,100-r.otif,N(r.cur.orders)+" orders shipped"]),{fmt:x=>P(x,1),lw:130,pr:56}));
+    const c5=card("Orders shipping in the next 7 days",S.so!=="all"?S.so+" only":"from "+fmtDay(g.b));
+    c5.appendChild(g.ship7.length?tbl(["Customer","Product class","Owner",{t:"Volume",n:1},{t:"Value",n:1},{t:"Ships in",n:1},"Type"],
+      g.ship7.slice(0,14).map(o=>[(CMAP[o.cust]||{}).n,CLSN[o.ci],(REPS.find(r=>r.id===o.rep)||{}).n,
+        KG(o.kg),M(o.rev),(o.shipDay-g.b)+"d",
+        {html:o.blanket?chip("","blanket"):chip("","order")}]))
+      :h("div","rule","Nothing confirmed in the next 7 days under this filter."));
+    r4.appendChild(c4);r4.appendChild(c5);v.appendChild(r4);
+  }
+
+  /* ── Pipeline ── */
+  if(tab===3){
+    const r1=row("g4");
+    r1.appendChild(KPI({label:"Open pipeline",value:M(g.pipeTot),
+      sub:"open at "+fmtDay(g.b)+" · CRM opportunity = quote header"}));
+    r1.appendChild(KPI({label:"Coverage vs remaining plan",value:g.cov==null?"n/a":g.cov.toFixed(1)+"×",
+      sub:g.cov==null?"plan for this period already met":M(Math.max(g.plan-g.cur.tot,0))+" still to plan"}));
+    r1.appendChild(KPI({label:"Win rate",value:g.qN>=10?P(g.qconv):"—",
+      sub:g.qN?g.qN+" quotes decided in "+PLABEL[S.period]:"no quotes decided in this window",
+      cmp:g.qN<10?"denominator under 10 — rate suppressed":(g.qN<=20?"denominator "+g.qN+" — indicative":null),dir:0}));
+    r1.appendChild(KPI({label:"New pipeline created",value:M(g.newPipe),
+      sub:"opportunities created in "+PLABEL[S.period]}));
+    v.appendChild(r1);
+    const r2=row("g2");
+    const c1=card("Pipeline by stage","as at "+fmtDay(g.b));c1.appendChild(funnel(g.pipeStage));
+    const c2=card("Unconverted quotes by age","Rule: Open Sales Quote · Quote Date → Quote Age Band · "+M(g.qOpen)+" open");
+    c2.appendChild(barH(g.qAge,{lw:96}));
+    r2.appendChild(c1);r2.appendChild(c2);v.appendChild(r2);
+    v.appendChild(winLossRow(g));
+    const r3=row("g1");
+    const c3=card("Pipeline by seller");
+    c3.appendChild(barH(g.reps.slice().sort((a,b)=>(g.repPipe[b.id]||0)-(g.repPipe[a.id]||0))
+      .map(r=>[r.n,g.repPipe[r.id]||0,M(Math.max(r.plan-r.tot,0))+" still to plan"]),{lw:118}));
+    r3.appendChild(c3);v.appendChild(r3);
   }
   return v;
 }
 
-function sheetKAM(tab){
+/* Win/loss by product class and by customer category. Shared by both
+   dashboards. The denominator travels with every rate and a rate on fewer
+   than ten decided quotes is suppressed, not shown small. */
+function winLossRow(g){
+  const r=row("g2");
+  const c1=card("Win/loss by product class","quotes decided in "+PLABEL[S.period]);
+  c1.appendChild(g.wlClass.length?tbl(["Product class",{t:"Decided",n:1},{t:"Won",n:1},{t:"Win rate",n:1},{t:"Value won",n:1}],
+    g.wlClass.map(x=>[x.k,N(x.n),N(x.w),
+      {html:x.n<10?'<span style="color:var(--text-tertiary)">n='+x.n+' · suppressed</span>'
+            :chip(x.rate>=40?"ok":x.rate>=25?"warn":"err",P(x.rate,0))},
+      M(x.wamt)])
+    .concat([{tot:1,c:["Total / recomputed",N(g.qN),N(g.qres.filter(q=>q.won).length),
+      g.qN>=10?P(g.qconv,0):"—",M(g.qres.filter(q=>q.won).reduce((s,q)=>s+q.amt,0))]}]))
+    :h("div","rule","No quotes were decided in this window."));
+  const c2=card("Win/loss by customer category","quotes decided in "+PLABEL[S.period]);
+  c2.appendChild(g.wlCat.length?tbl(["Category",{t:"Decided",n:1},{t:"Won",n:1},{t:"Win rate",n:1},{t:"Value won",n:1}],
+    g.wlCat.map(x=>[x.k,N(x.n),N(x.w),
+      {html:x.n<10?'<span style="color:var(--text-tertiary)">n='+x.n+' · suppressed</span>'
+            :chip(x.rate>=40?"ok":x.rate>=25?"warn":"err",P(x.rate,0))},
+      M(x.wamt)]))
+    :h("div","rule","No quotes were decided in this window."));
+  r.appendChild(c1);r.appendChild(c2);
+  return r;
+}
+
+/* ── Account detail: a drill-through reached by clicking a customer, not a
+   persona dashboard. It carries no rail entry. ── */
+function sheetACCT(tab){
   const v=h("div"),g=G;
   v.appendChild(toolbar());
   const L=custList().length?custList():CUST.filter(c=>c.co===coK());
   const c0=L.find(x=>x.id===S.cust)||L[0];
-  if(!c0)return h("div","vis-s","No accounts in this company.");
-  const sel=h("div","vis");
-  sel.style.display="flex";sel.style.alignItems="center";sel.style.gap="11px";
-  sel.appendChild(h("span",null,'<span style="font-size:11px;font-weight:600;color:var(--text-secondary)">Account</span>'));
-  const s2=document.createElement("select");s2.style.cssText="font-family:var(--font);font-size:12.5px;padding:4px 7px;border:1px solid var(--axis);border-radius:2px";
-  L.forEach(c=>{const o=document.createElement("option");o.value=c.id;o.textContent=c.n;if(c.id===c0.id)o.selected=1;s2.appendChild(o);});
-  s2.addEventListener("change",()=>{S.cust=s2.value;draw();});
-  sel.appendChild(s2);
-  sel.appendChild(h("span",null,
-    `${c0.loy==="At risk"?chip("err","At risk"):c0.loy==="Loyal"?chip("ok","Loyal"):chip("","Active")} ${chip("",c0.tc)} ${chip("","Owner: "+(REPS.find(r=>r.id===c0.rep)||{}).n)}`));
-  v.appendChild(sel);
-  const cl=LINES.filter(l=>l.cust===c0.id), yr=CUR_Y();
-  const acc=(f,fl)=>cl.reduce((s,l)=>fl(l)?s+f(l)*wMonth(l.m):s,0);
-  const rev=acc(l=>l.rev,l=>inYTD(l.m,yr)), kg=acc(l=>l.kg,l=>inYTD(l.m,yr));
-  const cost=acc(l=>l.cost,l=>inYTD(l.m,yr)), reb=acc(l=>l.reb,l=>inYTD(l.m,yr));
-  const revLY=cl.reduce((s,l)=>inYTD(l.m+12,yr)?s+l.rev*wMonth(l.m+12):s,0);
-  const oo=OPEN.filter(o=>o.cust===c0.id&&(S.so==="all"||(S.so==="blanket")===o.blanket));
+  if(!c0)return h("div","rule","No accounts in this company under the current filters.");
+  const sg=g.seg.find(o=>o.c.id===c0.id)||{};
+  const pick=h("div","card"),pb=h("div","card-toolbar");
+  const back=h("button","chip pri","← Back to "+SHEETS[S.from||0].n);
+  back.addEventListener("click",()=>{S.sheet=S.from||0;S.tab=0;draw();});
+  pb.appendChild(back);
+  pb.appendChild(fld("Account",sel("fAcct",L.map(c=>[c.id,c.n]),c0.id,x=>{S.cust=x;draw();}),1.4));
+  pb.appendChild(h("div","sp"));
+  pb.appendChild(h("div",null,
+    (sg.status==="Lost"?chip("err","Lost"):sg.status==="At risk"?chip("warn","At risk"):
+     sg.status==="Loyal"?chip("ok","Loyal"):sg.status==="Acquired"?chip("pri","Acquired"):chip("",sg.status||"—"))+" "+
+    chip("","ABC "+(sg.abc||"—"))+" "+chip("",c0.cat)+" "+
+    chip("","Owner: "+(REPS.find(r=>r.id===c0.rep)||{}).n)));
+  pick.appendChild(pb);
+  v.appendChild(pick);
+
+  const iv=INV.filter(x=>x.cust===c0.id);
+  const cur=bundle(iv,g.a,g.z), prv=g.cmpOK?bundle(iv,g.ca,g.cz):null;
+  const dd=(x,y,pp)=>prv==null?{cmp:"no comparable history",dir:0}:
+    {cmp:pp?SP(x-y)+"pp":(y?SP((x/y-1)*100)+"%":"n/a"),dir:x>=y?1:-1,cmpL:CMPLBL()};
+  const oo=OPEN.filter(o=>o.cust===c0.id&&o.orderDay<=g.b&&o.shipDay>g.b
+    &&(S.so==="all"||(S.so==="blanket")===o.blanket));
 
   if(tab===0){
     const r1=row("g4");
-    r1.appendChild(KPI({label:"Revenue YTD",value:M(rev),
-      cmp:SP((rev/(revLY||1)-1)*100)+"%",dir:rev>=revLY?1:-1,cmpL:"vs same point LY",sub:KG(kg)}));
-    r1.appendChild(KPI({label:"Margin % net of rebate",value:P(rev?(rev-cost+reb)/rev*100:0),
-      cmp:SP((rev?(rev-cost+reb)/rev*100:0)-G.mgnTarget)+"pp",
-      dir:(rev?(rev-cost+reb)/rev*100:0)>=G.mgnTarget?1:-1,cmpL:"vs maintained target"}));
-    r1.appendChild(KPI({label:"Product classes bought",value:c0.classes.length+" of "+CLS.length,
-      sub:(CLS.length-c0.classes.length)+" classes unbought"}));
-    r1.appendChild(KPI({label:"Open orders",value:M(oo.reduce((s,o)=>s+o.rev,0)),
+    r1.appendChild(KPI({label:"Sales — "+PLABEL[S.period],value:M(cur.tot),
+      ...dd(cur.tot,prv?prv.tot:0),sub:"product "+M(cur.rev)+" · other "+M(cur.oth)+" · "+KG(cur.kg)}));
+    r1.appendChild(KPI({label:"Gross margin % (product)",value:P(cur.mgnP),
+      cmp:SP(cur.mgnP-g.mgnTarget)+"pp",dir:cur.mgnP>=g.mgnTarget?1:-1,cmpL:"vs maintained target",
+      sub:"product + other "+P(cur.mgnT)}));
+    r1.appendChild(KPI({label:"Price vs contract",value:cur.cRev?P(cur.priceIdx,1):"—",
+      cmp:cur.cRev?M(cur.leak)+" leakage":null,dir:cur.priceIdx>=99.5?1:-1,cmpL:cur.cRev?"in the window":""}));
+    r1.appendChild(KPI({label:"Open orders",value:M(oo.reduce((s,o)=>s+o.rev,0)),icon:"truck",
       sub:KG(oo.reduce((s,o)=>s+o.kg,0))+" · "+oo.length+" lines"}));
     v.appendChild(r1);
+    const r1b=row("g4");
+    r1b.appendChild(KPI({label:"ABC band",value:sg.abc||"—",
+      sub:sg.share!=null?P(sg.share)+" of company trailing-12-month sales":""}));
+    r1b.appendChild(KPI({label:"Recency",value:sg.rec>=9999?"never":N(sg.rec)+" d",
+      sub:"band "+(sg.recB||"—")}));
+    r1b.appendChild(KPI({label:"Orders, trailing 12 months",value:N(sg.freq||0),
+      sub:"band "+(sg.freqB||"—")+" · relationship "+(sg.relB||"—")}));
+    r1b.appendChild(KPI({label:"Sales trend",value:sg.trend||"—",
+      cmp:sg.trPct==null?null:SP(sg.trPct)+"%",dir:sg.trend==="Up"?1:sg.trend==="Down"?-1:0,
+      cmpL:"trailing 3 months vs the same 3 last year"}));
+    v.appendChild(r1b);
     const r2=row("g2");
-    const c1=card("Revenue by product class");
-    const byC={};cl.forEach(l=>{if(!inYTD(l.m,yr))return;byC[l.ci]=(byC[l.ci]||0)+l.rev*wMonth(l.m);});
+    const c1=card("Product sales by class",PLABEL[S.period]);
+    const byC={};LINES.forEach(l=>{if(l.cust!==c0.id||l.d<g.a||l.d>g.z)return;byC[l.ci]=(byC[l.ci]||0)+l.rev;});
     c1.appendChild(barH(Object.keys(byC).map(k=>[CLSN[k],byC[k]]).sort((a,b)=>b[1]-a[1]),{lw:150}));
-    const c2=card("Revenue and volume by year");
-    const yrs=[2025,2026];
-    c2.appendChild(tbl([{t:"Year"},{t:"Revenue",n:1},{t:"Volume",n:1},{t:"Price / kg",n:1},{t:"Margin %",n:1}],
-      yrs.map(y=>{const f=l=>yOf(l.m)===y&&(y<yr||l.m<=A().mi);
-        const rv=cl.reduce((s,l)=>f(l)?s+l.rev*(y<yr?1:wMonth(l.m)):s,0);
-        const k2=cl.reduce((s,l)=>f(l)?s+l.kg*(y<yr?1:wMonth(l.m)):s,0);
-        const cs=cl.reduce((s,l)=>f(l)?s+l.cost*(y<yr?1:wMonth(l.m)):s,0);
-        const rb=cl.reduce((s,l)=>f(l)?s+l.reb*(y<yr?1:wMonth(l.m)):s,0);
-        return [y===yr?y+" to as-of":String(y),M(rv),KG(k2),k2?PKG(rv/k2):"—",rv?P((rv-cs+rb)/rv*100):"—"];})));
+    const c2=card("Sales and volume by year","to the as-of date in the current year");
+    const yNow=dt(g.b).getUTCFullYear();
+    c2.appendChild(tbl([{t:"Year"},{t:"Product sales",n:1},{t:"Other",n:1},{t:"Volume",n:1},
+        {t:"ASP / kg",n:1},{t:"Price vs contract",n:1},{t:"Margin %",n:1}],
+      [yNow-2,yNow-1,yNow].map(y=>{const a2=di(y,0,1),z2=Math.min(di(y,11,31),g.b);
+        if(z2<a2)return [String(y),"—","—","—","—","—","—"];
+        const bb=bundle(iv,a2,z2);
+        return [y===yNow?y+" to as-of":String(y),M(bb.rev),M(bb.oth),KG(bb.kg),
+          bb.kg?PKG(bb.asp):"—",bb.cRev?P(bb.priceIdx,1):"—",bb.rev?P(bb.mgnP):"—"];})));
     r2.appendChild(c1);r2.appendChild(c2);v.appendChild(r2);
+    const r3=row("g2");
+    const c3=card("Open pipeline and quotes for this account","at "+fmtDay(g.b));
+    const ap=PIPE.filter(p=>p.cust===c0.id&&p.createDay<=g.b&&p.closeDay>g.b);
+    const aq=g.qOpenRows.filter(q=>q.cust===c0.id);
+    c3.appendChild((ap.length||aq.length)?tbl(["Type","Product class",{t:"Amount",n:1},{t:"Age",n:1},"Stage / status"],
+      ap.map(p=>["Opportunity",CLSN[p.ci],M(p.amt),(g.b-p.createDay)+"d",
+        {html:chip("",STAGE[Math.max(0,Math.min(p.tgt,Math.floor((g.b-p.createDay)/p.life*5)))])}])
+      .concat(aq.map(q=>["Quote",CLSN[q.ci],M(q.amt),(g.b-q.createDay)+"d",{html:chip("","awaiting decision")}])))
+      :h("div","rule","No open opportunity or quote for this account at the as-of date."));
+    const c4=card("Price variance by product class",PLABEL[S.period]);
+    const pv={};LINES.forEach(l=>{if(l.cust!==c0.id||l.d<g.a||l.d>g.z)return;
+      const o=pv[l.ci]||(pv[l.ci]={rev:0,cRev:0,kg:0});o.rev+=l.rev;o.cRev+=l.cRev;o.kg+=l.kg;});
+    const pvr=Object.keys(pv).map(k=>({n:CLSN[k],...pv[k],idx:pv[k].cRev?pv[k].rev/pv[k].cRev*100:0}))
+      .sort((a,b)=>a.idx-b.idx);
+    c4.appendChild(pvr.length?tbl(["Product class",{t:"Contract / kg",n:1},{t:"Invoiced / kg",n:1},
+        {t:"Leakage",n:1},{t:"vs contract",n:1}],
+      pvr.map(x=>[x.n,PKG(x.cRev/x.kg),PKG(x.rev/x.kg),M(x.cRev-x.rev),
+        {html:chip(x.idx>=99.5?"ok":x.idx>=98?"warn":"err",P(x.idx,1))}]))
+      :h("div","rule","No invoiced lines for this account in the window."));
+    r3.appendChild(c3);r3.appendChild(c4);v.appendChild(r3);
   }
   if(tab===1){
-    const r1=row("g1");
-    const c=card("Reorder cadence by product class");
-    c.appendChild(tbl(["Product class",{t:"Orders / yr",n:1},{t:"Expected every",n:1},{t:"Days since order",n:1},{t:"Days over",n:1},"Status"],
-      c0.classes.map(x=>{const since=Math.max(0,x.sinceLast-dEl()),over=Math.round(since-x.interval);
-        return [CLSN[x.ci],String(x.perYear),x.interval+"d",String(since),over>0?String(over):"—",
+    const r1=row("g4");
+    r1.appendChild(KPI({label:"Customer OTIF",value:P(cur.otif),icon:"truck",
+      ...dd(cur.otif,prv?prv.otif:0,1),sub:N(cur.orders)+" orders in the window"}));
+    r1.appendChild(KPI({label:"Orders late",value:N(iv.filter(x=>x.d>=g.a&&x.d<=g.z&&x.late).length),
+      sub:"delivered after the promised date",icon:"truck"}));
+    r1.appendChild(KPI({label:"Orders short-shipped",value:N(iv.filter(x=>x.d>=g.a&&x.d<=g.z&&x.short).length),
+      sub:"delivered incomplete",icon:"truck"}));
+    r1.appendChild(KPI({label:"Order frequency, trailing 12 months",value:N(sg.freq||0),
+      sub:"ERP Customer Product Order Frequency"}));
+    v.appendChild(r1);
+    const r2=row("g1");
+    const c=card("Reorder cadence by product class","ERP Date Next Order / Reorder Week, read at "+fmtDay(g.b));
+    c.appendChild(tbl(["Product class",{t:"Orders / yr",n:1},{t:"Expected every",n:1},{t:"Last order",n:1},
+        {t:"Days since",n:1},{t:"Days over",n:1},"Status"],
+      c0.classes.map(x=>{const ld=lastOn(x,g.b);
+        if(ld<0)return [CLSN[x.ci],String(x.perYear),x.interval+"d","never","—","—",{html:chip("","never ordered")}];
+        const since=g.b-ld,over=Math.round(since-x.interval);
+        return [CLSN[x.ci],String(x.perYear),x.interval+"d",fmtDay(ld).slice(4),N(since),over>0?N(over):"—",
           {html:over>x.interval?chip("err","overdue"):over>0?chip("warn","late"):chip("ok","on cadence")}];})));
-    r1.appendChild(c);v.appendChild(r1);
-    const r2=row("g2");
-    const c2=card("Volume by product class");
-    c2.appendChild(barH(c0.classes.map(x=>[CLSN[x.ci],x.annKg]).sort((a,b)=>b[1]-a[1]),{fmt:KG,lw:150}));
-    const c3=card("Open orders",S.so!=="all"?S.so+" only":null);
-    c3.appendChild(oo.length?tbl(["Product class",{t:"Volume",n:1},{t:"Value",n:1},{t:"Ships in",n:1},"Type"],
-      oo.sort((a,b)=>a.shipIn-b.shipIn).slice(0,10).map(o=>[CLSN[o.ci],KG(o.kg),M(o.rev),o.shipIn+"d",
+    r2.appendChild(c);v.appendChild(r2);
+    const r3=row("g2");
+    const c2=card("Volume by product class",PLABEL[S.period]);
+    const byK={};LINES.forEach(l=>{if(l.cust!==c0.id||l.d<g.a||l.d>g.z)return;byK[l.ci]=(byK[l.ci]||0)+l.kg;});
+    c2.appendChild(barH(Object.keys(byK).map(k=>[CLSN[k],byK[k]]).sort((a,b)=>b[1]-a[1]),{fmt:KG,lw:150}));
+    const c3=card("Open orders",S.so!=="all"?S.so+" only":"open at "+fmtDay(g.b));
+    c3.appendChild(oo.length?tbl(["Product class",{t:"Volume",n:1},{t:"Value",n:1},{t:"Ordered",n:1},{t:"Ships in",n:1},"Type"],
+      oo.sort((a,b)=>a.shipDay-b.shipDay).slice(0,12).map(o=>[CLSN[o.ci],KG(o.kg),M(o.rev),
+        (g.b-o.orderDay)+"d ago",(o.shipDay-g.b)+"d",
         {html:o.blanket?chip("","blanket"):chip("","order")}]))
-      :h("div","vis-s","No open orders under this filter."));
-    r2.appendChild(c2);r2.appendChild(c3);v.appendChild(r2);
+      :h("div","rule","No open orders under this filter."));
+    r3.appendChild(c2);r3.appendChild(c3);v.appendChild(r3);
   }
   if(tab===2){
-    const r1=row("g3");
+    const r1=row("g4");
     const AR=G.ar[c0.id];
     r1.appendChild(KPI({label:"A/R balance",value:M0(AR.bal),
       cmp:AR.past>0?M0(AR.past):"none",dir:AR.past>0?-1:1,cmpL:"past due",
-      sub:"on "+M0(AR.t12)+" trailing 12-month revenue"}));
+      sub:"on "+M0(AR.t12)+" trailing 12-month sales"}));
+    r1.appendChild(KPI({label:"DSO",value:AR.dso?AR.dso.toFixed(0)+" days":"—",
+      cmp:AR.dsoPrior?SP(AR.dso-AR.dsoPrior,0)+"d":"no prior window",
+      dir:AR.dso<=AR.dsoPrior?1:-1,cmpL:"vs the window 90 days earlier"}));
     r1.appendChild(KPI({label:"Average days to pay",value:AR.dtp.toFixed(1),
       cmp:SP(AR.dtp-c0.dtpP)+"d",dir:AR.dtp<=c0.dtpP?1:-1,cmpL:"vs prior 3 months"}));
-    r1.appendChild(KPI({label:"Credit utilisation",value:P(AR.bal/c0.lim*100,0),
+    r1.appendChild(KPI({label:"Credit utilisation",value:P(c0.lim?AR.bal/c0.lim*100:0,0),
       cmp:AR.bal>c0.lim?"over limit":AR.bal/c0.lim>0.85?"near limit":"headroom",
       dir:AR.bal>c0.lim?-1:AR.bal/c0.lim>0.85?0:1}));
     v.appendChild(r1);
@@ -1072,7 +1889,7 @@ function sheetKAM(tab){
       ["Headroom",M0(Math.max(c0.lim-AR.bal,0)),AR.bal>c0.lim?"var(--neg)":"var(--pos)"]]}));
     r2.appendChild(c1);v.appendChild(r2);
     const r3=row("g2");
-    const c2=card("A/R aging");
+    const c2=card("A/R aging","Rule: Open AR · Due Date → Age Band");
     c2.appendChild(legend([["var(--cat-1)","Current"],["var(--fb-warning)","31–60"],["var(--fb-error)","61+"]]));
     c2.appendChild(barStack([["Current",AR.bal-AR.past,"var(--cat-1)"],
       ["31–60",AR.past*0.55,"var(--fb-warning)"],["61+",AR.past*0.45,"var(--fb-error)"]],{pr:96}));
@@ -1093,9 +1910,14 @@ function drawRail(){
   const mb=h("button","rail-btn",svgIcon("menu"));
   mb.setAttribute("aria-label","Navigation");mb.title="Navigation";r.appendChild(mb);
   r.appendChild(h("div","rail-div"));
-  SHEETS.forEach((s,i)=>{const b=h("button","rail-btn",svgIcon(s.icon||"leaderboard"));
+  SHEETS.forEach((s,i)=>{
+    if(s.hidden)return;
+    const b=h("button","rail-btn",svgIcon(s.icon||"leaderboard"));
     b.setAttribute("aria-label",s.n);b.title=s.n;
-    b.setAttribute("aria-current",String(S.sheet===i));
+    /* while in the account drill-through, the dashboard it was entered from
+       stays marked as current — the drill is a detour, not a destination */
+    const cur=S.sheet===i||!!(SHEETS[S.sheet].hidden&&(S.from||0)===i);
+    b.setAttribute("aria-current",String(cur));
     b.addEventListener("click",()=>{S.sheet=i;S.tab=0;draw();});r.appendChild(b);});
   r.appendChild(h("div","rail-sp"));
   r.appendChild(h("div","rail-div"));
@@ -1110,9 +1932,8 @@ function drawRail(){
 }
 function draw(){
   const sh=SHEETS[S.sheet];
-  /* The rep sheet shows one seller, but must NOT overwrite the shared
-     Salesperson filter — otherwise navigating back to the CSO sheet would
-     silently keep showing a single rep's book. */
+  if(S.tab>=sh.tabs.length)S.tab=0;
+  /* the rep sheet shows one seller but must not overwrite the shared filter */
   if(S.rep!=="all"&&!repList().some(r=>r.id===S.rep))S.rep="all";
   if(!CUST.some(c=>c.co===coK()&&c.id===S.cust))S.cust=(CUST.filter(c=>c.co===coK())[0]||{}).id;
   agg();drawRail();
@@ -1126,16 +1947,21 @@ function draw(){
     o.value=k;o.textContent=k;cc.appendChild(o);});
     cc.addEventListener("change",()=>{S.ccy=cc.value;draw();});}
   cc.value=S.ccy;
-  document.getElementById("crumbs").innerHTML=`Sales Analytics<span>/</span>Phase 4<span>/</span><b>${sh.n}</b>`;
+  document.getElementById("crumbs").innerHTML= sh.hidden
+    ? `Sales Analytics<span>/</span>${SHEETS[S.from||0].n}<span>/</span><b>${sh.n}</b>`
+    : `Sales Analytics<span>/</span>Phase 4<span>/</span><b>${sh.n}</b>`;
   document.getElementById("title").innerHTML=`Sales Analytics<i>·</i>${sh.tabs[S.tab]}`;
-  document.getElementById("asof").textContent="As of "+A().label+"  ·  "+sh.scope+" scope"+
+  document.getElementById("asof").textContent="As of "+fmtDay(G.b)+"  ·  "+
+    PERIODS.find(p=>p[0]===S.period)[1]+"  ·  "+sh.scope+" scope"+
     (S.rep!=="all"?" ("+(REPS.find(r=>r.id===S.rep)||{}).n+")":"");
   const tb=document.getElementById("tabs");tb.innerHTML="";
   sh.tabs.forEach((t,i)=>{const b=document.createElement("button");b.textContent=t;
     b.setAttribute("aria-current",String(S.tab===i));
     b.addEventListener("click",()=>{S.tab=i;draw();});tb.appendChild(b);});
-  const v=document.getElementById("view");v.innerHTML="";
-  v.appendChild({cso:sheetCSO,mgr:sheetMGR,rep:sheetREP,kam:sheetKAM}[sh.id](S.tab));
+  const vw=document.getElementById("view");vw.innerHTML="";
+  PEND.length=0;
+  vw.appendChild({cso:sheetCSO,mgr:sheetMGR,acct:sheetACCT}[sh.id](S.tab));
+  flushCharts();
   tip.style.opacity=0;
 }
 draw();
